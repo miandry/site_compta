@@ -91,10 +91,11 @@ async function loadDependencies() {
   await Promise.all([...[...vocabularies].map((v) => terms.load(v)), ...[...targets].map((t) => lookups.load(t))])
 }
 
-function query(pageIndex: number, limit = PAGE_SIZE) {
+function query(pageIndex: number, limit: number | 'all' = PAGE_SIZE, fields?: string[]) {
   return listEntities(props.bundle, {
     page: pageIndex,
     limit,
+    fields,
     search: search.value.trim() || undefined,
     filters: { ...filters },
     dateRange: def.value.dateFilterKey
@@ -109,6 +110,7 @@ async function refresh(silent = false) {
   const seq = ++refreshSeq
   if (!silent) loading.value = true
   error.value = ''
+  loadFilteredSum(seq)
   try {
     const result = await query(page.value)
     if (seq !== refreshSeq) return
@@ -130,14 +132,27 @@ const mobileItems = ref<EntityRecord[]>([])
 const mobilePage = ref(0)
 const loadingMore = ref(false)
 const hasMore = computed(() => mobileItems.value.length < total.value)
-const mobileSum = computed(() => {
-  const key = moneyColumn.value?.key
-  if (!key) return 0
-  return mobileItems.value.reduce((sum, r) => sum + (sign(def.value, r) || 1) * (Number(r.values[key]) || 0), 0)
-})
-const mobileSumTone = computed(() =>
-  !def.value.directionKey ? 'text-neu-dark' : mobileSum.value < 0 ? 'text-rose-600' : 'text-emerald-700',
+/** Total (net entrées − sorties) de tous les éléments filtrés, pas seulement ceux chargés. */
+const filteredSum = ref<number | null>(null)
+const filteredSumTone = computed(() =>
+  !def.value.directionKey ? 'text-neu-dark' : (filteredSum.value ?? 0) < 0 ? 'text-rose-600' : 'text-emerald-700',
 )
+
+async function loadFilteredSum(seq: number) {
+  const key = moneyColumn.value?.key
+  if (!key) {
+    filteredSum.value = null
+    return
+  }
+  const fields = ['nid', key, ...(def.value.directionKey ? [def.value.directionKey] : [])]
+  try {
+    const { items: all } = await query(1, 'all', fields)
+    if (seq !== refreshSeq) return
+    filteredSum.value = all.reduce((sum, r) => sum + (sign(def.value, r) || 1) * (Number(r.values[key]) || 0), 0)
+  } catch {
+    if (seq === refreshSeq) filteredSum.value = null
+  }
+}
 
 /** Charge la page suivante (api_solutions `offset` / `pager`) et l'ajoute à la liste. */
 async function loadMore() {
@@ -353,8 +368,8 @@ async function onDelete(record: EntityRecord) {
     <div v-else-if="def.mobile" class="flex min-h-0 flex-1 flex-col md:hidden">
       <p class="mb-3 flex shrink-0 justify-between px-2 text-sm text-neu-muted">
         <span>{{ total }} élément(s)</span>
-        <span v-if="mobileItems.length && moneyColumn" class="font-mono font-semibold" :class="mobileSumTone">
-          {{ formatMoney(mobileSum) }}
+        <span v-if="filteredSum !== null && total" class="font-mono font-semibold" :class="filteredSumTone">
+          {{ formatMoney(filteredSum) }}
         </span>
       </p>
       <div class="-mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2 pt-1">

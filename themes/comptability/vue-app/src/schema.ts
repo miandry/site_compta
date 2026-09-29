@@ -158,7 +158,7 @@ export const BUNDLES: Record<BundleName, BundleDef> = {
       avatarKey: 'field_person',
     },
     dateFilterKey: 'field_operation_date',
-    sortField: 'field_operation_date',
+    sortField: 'nid',
     sortOrder: 'DESC',
     titleFrom: (v) => {
       const label = String(v.field_label ?? '').replace(/\s+/g, ' ').trim()
