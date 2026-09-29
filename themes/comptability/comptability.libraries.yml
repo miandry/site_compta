@@ -1,0 +1,24 @@
+fonts:
+  remote: https://fonts.google.com
+  license:
+    name: SIL Open Font License
+    url: https://scripts.sil.org/OFL
+    gpl-compatible: false
+  css:
+    theme:
+      'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Nunito+Sans:wght@400;600;700;800&display=swap':
+        type: external
+
+global:
+  js:
+    dist/app.js:
+      attributes:
+        type: module
+      preprocess: false
+  css:
+    theme:
+      css/style.css: {}
+      dist/assets/main.css: {}
+  dependencies:
+    - comptability/fonts
+    - core/drupalSettings

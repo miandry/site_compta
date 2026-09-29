@@ -1,0 +1,8 @@
+name: Comptability
+type: theme
+description: 'Comptabilité — Vue 3 + Vite + Tailwind (neumorphism) sur api_solutions'
+core_version_requirement: ^9 || ^10
+base theme: classy
+package: Custom
+libraries:
+  - comptability/global
