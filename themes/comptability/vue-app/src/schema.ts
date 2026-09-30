@@ -70,6 +70,8 @@ export interface BundleDef {
   directionKey?: string
   /** Page détail : records d'un autre bundle qui référencent celui-ci. */
   related?: { bundle: BundleName; key: string; label: string }
+  /** Page détail : historique des révisions (module Drupal comptabilty). */
+  history?: boolean
   label: string
   plural: string
   description: string
@@ -87,20 +89,24 @@ export interface BundleDef {
   validate?: (values: FormValues) => string
 }
 
-export const VOCABULARIES: Record<Vocabulary, { label: string; description: string }> = {
+/** `adminOnly` : page de gestion réservée aux administrateurs (le backend refuse aussi l'écriture). */
+export const VOCABULARIES: Record<Vocabulary, { label: string; description: string; adminOnly?: boolean }> = {
   operation_type: {
     label: "Types d'opération",
     description: "Nature de l'opération : Versement espèces, Virement reçu, Virement émis, Retrait, Chèque, Frais bancaires.",
   },
   category: {
+    adminOnly: true,
     label: 'Catégories',
     description: "Catégorie de l'opération pour le classement et les rapports (ex. Écolage, Vente, Salaire, Fournisseur).",
   },
   method_payment: {
+    adminOnly: true,
     label: 'Moyens de paiement',
     description: "Moyen utilisé pour l'opération : Espèces, Virement bancaire, Chèque, MVola, Orange Money, Airtel Money.",
   },
   caisse: {
+    adminOnly: true,
     label: 'Caisses',
     description: 'Caisse ou compte de trésorerie concerné (ex. Caisse principale, Caisse secondaire, Banque BOA, Compte MVola).',
   },
@@ -122,10 +128,11 @@ export const BUNDLES: Record<BundleName, BundleDef> = {
     description: 'Lignes du relevé : date, mouvement (entrée/sortie), montant, libellé, personne et justificatif.',
     createLabel: '+ Nouvelle opération',
     directionKey: 'field_mouvement_argent',
+    history: true,
     fields: [
       { key: 'field_mouvement_argent', label: "Mouvement d'argent", columnLabel: 'Mouvement', kind: 'options', options: MOUVEMENTS, required: true },
       { key: 'field_amount', label: 'Montant (Ar)', columnLabel: 'Montant', kind: 'money', required: true },
-      { key: 'field_label', label: 'Libellé', kind: 'textarea', required: true, placeholder: 'Écolage septembre — Rakoto' },
+      { key: 'field_label', label: 'Libellé', kind: 'textarea', placeholder: 'Écolage septembre — Rakoto (facultatif)' },
       { key: 'field_operation_date', label: 'Date opération', columnLabel: 'Date', kind: 'date', required: true },
       { key: 'field_person', label: 'Personne', kind: 'node', target: 'person', required: true, creatable: true },
       { key: 'field_operation_type', label: "Type d'opération", columnLabel: 'Type', kind: 'term', vocabulary: 'operation_type', creatable: true },
@@ -160,9 +167,13 @@ export const BUNDLES: Record<BundleName, BundleDef> = {
     dateFilterKey: 'field_operation_date',
     sortField: 'nid',
     sortOrder: 'DESC',
-    titleFrom: (v) => {
+    // Drupal exige un titre : sans libellé, « Catégorie — Personne ».
+    titleFrom: (v, ctx) => {
       const label = String(v.field_label ?? '').replace(/\s+/g, ' ').trim()
-      return label.length > 120 ? `${label.slice(0, 117)}…` : label || `Opération ${v.field_operation_date}`
+      if (label) return label.length > 120 ? `${label.slice(0, 117)}…` : label
+      const category = v.field_category ? ctx.termLabel('category', String(v.field_category)) : ''
+      const person = v.field_person ? ctx.lookup('person', String(v.field_person))?.label ?? '' : ''
+      return [category, person].filter(Boolean).join(' — ') || 'Opération'
     },
   },
 

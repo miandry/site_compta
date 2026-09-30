@@ -11,6 +11,8 @@ export const useAuthStore = defineStore('auth', () => {
   const initialized = ref(false)
 
   const isAuthenticated = computed(() => Boolean(user.value))
+  /** Même règle que le module comptability_access : uid 1 ou rôle administrator. */
+  const isAdmin = computed(() => Boolean(user.value && (user.value.id === '1' || user.value.roles.includes('administrator'))))
 
   async function init() {
     if (initialized.value) return
@@ -43,5 +45,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
-  return { user, loading, error, initialized, isAuthenticated, init, login, logout }
+  return { user, loading, error, initialized, isAuthenticated, isAdmin, init, login, logout }
 })

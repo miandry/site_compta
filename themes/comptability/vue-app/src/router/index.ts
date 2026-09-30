@@ -75,6 +75,9 @@ router.beforeEach(async (to) => {
   if (to.meta.guest && auth.isAuthenticated) {
     return { name: 'tableau-de-bord' }
   }
+  if (vocabulary && VOCABULARIES[vocabulary]?.adminOnly && !auth.isAdmin) {
+    return { name: 'tableau-de-bord' }
+  }
   return true
 })
 

@@ -1,0 +1,13 @@
+comptabilty.operation_history:
+  path: '/comptabilty/api/operation/{node}/revisions'
+  defaults:
+    _controller: '\Drupal\comptabilty\Controller\HistoryController::operation'
+  methods: [GET]
+  requirements:
+    node: '\d+'
+    _custom_access: '\Drupal\comptabilty\Controller\HistoryController::access'
+  options:
+    no_cache: TRUE
+    parameters:
+      node:
+        type: entity:node

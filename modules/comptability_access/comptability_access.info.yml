@@ -1,0 +1,7 @@
+name: 'Comptability access'
+type: module
+description: 'Restricts api_solutions node lists and details to the content owned by the calling user (administrators see everything).'
+core_version_requirement: ^9 || ^10
+package: Custom
+dependencies:
+  - api_solutions:api_solutions

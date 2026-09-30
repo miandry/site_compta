@@ -7,12 +7,14 @@ import type { Vocabulary } from '@/schema'
 import { BUNDLES } from '@/schema'
 import type { EntityRecord } from '@/services/entities'
 import { listEntities } from '@/services/entities'
+import { useAuthStore } from '@/stores/auth'
 import { useLookupsStore } from '@/stores/lookups'
 import { useTermsStore } from '@/stores/terms'
 import { extractErrorMessage, formatDate, formatMoney } from '@/utils/format'
 
 const def = BUNDLES.operation
 const router = useRouter()
+const auth = useAuthStore()
 const lookups = useLookupsStore()
 const terms = useTermsStore()
 const { sign, signedMoney } = useDisplay()
@@ -138,7 +140,7 @@ const personOf = (r: EntityRecord) =>
           <section class="card p-5">
             <div class="mb-4 flex items-center justify-between gap-3">
               <h2 class="font-display text-lg font-semibold text-neu-dark">Solde par caisse</h2>
-              <RouterLink to="/parametres/caisse" class="text-sm font-semibold text-accent hover:underline">Gérer</RouterLink>
+              <RouterLink v-if="auth.isAdmin" to="/parametres/caisse" class="text-sm font-semibold text-accent hover:underline">Gérer</RouterLink>
             </div>
             <ul class="space-y-3">
               <li

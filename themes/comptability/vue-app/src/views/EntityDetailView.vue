@@ -11,6 +11,8 @@ import type { BundleName, FormValues, Vocabulary } from '@/schema'
 import { BUNDLES, fieldDef } from '@/schema'
 import type { EntityRecord } from '@/services/entities'
 import { getEntity, listEntities, removeEntity, saveEntity } from '@/services/entities'
+import type { RevisionEntry } from '@/services/history'
+import { fetchHistory } from '@/services/history'
 import { useLookupsStore } from '@/stores/lookups'
 import { useTermsStore } from '@/stores/terms'
 import { useUiStore } from '@/stores/ui'
@@ -28,6 +30,7 @@ const def = computed(() => BUNDLES[props.bundle])
 const relatedDef = computed(() => (def.value.related ? BUNDLES[def.value.related.bundle] : null))
 const record = ref<EntityRecord | null>(null)
 const related = ref<EntityRecord[]>([])
+const history = ref<RevisionEntry[]>([])
 const loading = ref(true)
 const error = ref('')
 const editOpen = ref(false)
@@ -91,11 +94,19 @@ async function loadRelated() {
   related.value = items
 }
 
+async function loadHistory() {
+  history.value = def.value.history ? await fetchHistory(props.bundle, props.id).catch(() => []) : []
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [found] = await Promise.all([getEntity(props.bundle, props.id), loadDependencies(), loadRelated()])
+    const [found] = await Promise.all([getEntity(props.bundle, props.id), loadDependencies(), loadRelated(), loadHistory()])
     record.value = found
     if (!found) error.value = `${def.value.label} introuvable.`
   } catch (err) {
@@ -250,6 +261,27 @@ async function onDelete() {
           </li>
         </ul>
         <p v-else class="card px-4 py-8 text-center text-sm text-neu-muted">Aucune opération.</p>
+      </section>
+
+      <section v-if="def.history" class="space-y-3">
+        <h2 class="px-2 text-sm font-bold text-neu-dark">Historique ({{ history.length }})</h2>
+        <ol v-if="history.length" class="card divide-y divide-ink-100/70 overflow-hidden p-0">
+          <li v-for="(rev, index) in history" :key="rev.vid" class="flex gap-3 px-4 py-3.5">
+            <span
+              class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+              :class="index === 0 ? 'bg-accent' : 'bg-ink-300'"
+              aria-hidden="true"
+            />
+            <span class="min-w-0 flex-1">
+              <span class="block text-sm font-semibold text-neu-dark">{{ rev.message || 'Modification' }}</span>
+              <span class="block text-xs text-neu-muted">{{ formatDateTime(rev.date) }} · {{ rev.user }}</span>
+            </span>
+            <span v-if="rev.amount !== null" class="shrink-0 font-mono text-xs text-neu-muted">
+              {{ formatMoney(rev.amount) }}
+            </span>
+          </li>
+        </ol>
+        <p v-else class="card px-4 py-8 text-center text-sm text-neu-muted">Aucune révision.</p>
       </section>
     </template>
 

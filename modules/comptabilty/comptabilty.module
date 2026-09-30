@@ -1,0 +1,30 @@
+<?php
+
+/**
+ * @file
+ * Hooks for the comptabilty module.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\node\NodeInterface;
+
+/**
+ * Implements hook_help().
+ */
+function comptabilty_help($route_name, RouteMatchInterface $route_match) {
+  if ($route_name === 'help.page.comptabilty') {
+    return '<p>' . t('Site-specific features for the comptability application.') . '</p>';
+  }
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_presave() for node.
+ *
+ * Every insert or change of an operation gets its own revision whose log
+ * lists the changed fields with old → new values.
+ */
+function comptabilty_node_presave(NodeInterface $node) {
+  if ($node->bundle() === 'operation') {
+    \Drupal::service('comptabilty.manager')->prepareOperationRevision($node);
+  }
+}

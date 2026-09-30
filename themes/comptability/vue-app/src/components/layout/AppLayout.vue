@@ -12,7 +12,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const ui = useUiStore()
 
-const nav = [
+const nav = computed(() => [
   { title: '', links: [{ to: '/', label: 'Tableau de bord', exact: true }] },
   {
     title: 'Relevé',
@@ -23,12 +23,14 @@ const nav = [
   },
   {
     title: 'Paramètres',
-    links: (Object.keys(VOCABULARIES) as Vocabulary[]).map((vid) => ({
-      to: `/parametres/${vid}`,
-      label: VOCABULARIES[vid].label,
-    })),
+    links: (Object.keys(VOCABULARIES) as Vocabulary[])
+      .filter((vid) => auth.isAdmin || !VOCABULARIES[vid].adminOnly)
+      .map((vid) => ({
+        to: `/parametres/${vid}`,
+        label: VOCABULARIES[vid].label,
+      })),
   },
-]
+])
 
 const pageTitle = computed(() => (route.meta.title as string) || SITE_NAME)
 

@@ -1,0 +1,46 @@
+<?php
+
+/**
+ * @file
+ * Per-user scoping of api_solutions node results.
+ */
+
+use Drupal\Core\Database\Query\AlterableInterface;
+use Drupal\node\NodeInterface;
+
+/**
+ * Implements hook_ENTITY_TYPE_presave() for node.
+ *
+ * /api_solutions/save sets `uid` to the caller on every node save, which would
+ * hand ownership of an edited node (and its visibility) to whoever edited it.
+ */
+function comptability_access_node_presave(NodeInterface $node) {
+  if ($node->isNew() || !isset($node->original) || \Drupal::routeMatch()->getRouteName() !== 'api_solutions.save') {
+    return;
+  }
+  $node->setOwnerId($node->original->getOwnerId());
+}
+
+/**
+ * Implements hook_query_TAG_alter() for entity_query_node.
+ *
+ * api_solutions lists run entity queries with accessCheck(FALSE), so node
+ * grants never apply; non-administrators only get the nodes they created,
+ * unless they may "edit any {bundle} content" for the requested bundle.
+ */
+function comptability_access_query_entity_query_node_alter(AlterableInterface $query) {
+  $api_user = \Drupal::service('comptability_access.api_user');
+  $route = \Drupal::routeMatch();
+  if (!$api_user->isScopedRoute($route->getRouteName())) {
+    return;
+  }
+  $bundle = $route->getRawParameter('bundle');
+  if ($api_user->canSeeAll($bundle ? (string) $bundle : NULL)) {
+    return;
+  }
+  $user = $api_user->get();
+  $owned = \Drupal::database()->select('node_field_data', 'cao')
+    ->fields('cao', ['nid'])
+    ->condition('cao.uid', $user ? (int) $user->id() : -1);
+  $query->condition('base_table.nid', $owned, 'IN');
+}

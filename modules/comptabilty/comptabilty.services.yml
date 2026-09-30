@@ -1,0 +1,4 @@
+services:
+  comptabilty.manager:
+    class: Drupal\comptabilty\ComptabiltyManager
+    arguments: ['@entity_type.manager', '@current_user']
