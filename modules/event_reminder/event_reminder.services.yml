@@ -1,0 +1,16 @@
+services:
+  logger.channel.event_reminder:
+    parent: logger.channel_base
+    arguments: ['event_reminder']
+
+  event_reminder.scheduler:
+    class: Drupal\event_reminder\Service\ReminderScheduler
+    arguments: ['@entity_type.manager', '@config.factory', '@queue', '@datetime.time', '@logger.channel.event_reminder']
+
+  event_reminder.email_sender:
+    class: Drupal\event_reminder\Service\HttpEmailSender
+    arguments: ['@http_client', '@config.factory', '@logger.channel.event_reminder']
+
+  event_reminder.sms_sender:
+    class: Drupal\event_reminder\Service\HttpSmsSender
+    arguments: ['@http_client', '@config.factory', '@logger.channel.event_reminder']

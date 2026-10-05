@@ -56,7 +56,7 @@ const hero = computed(() =>
 )
 
 const details = computed(() =>
-  def.value.fields.filter((f) => f.key !== amountKey.value && f.key !== titleKey.value && f.kind !== 'image'),
+  def.value.fields.filter((f) => !f.virtual && f.key !== amountKey.value && f.key !== titleKey.value && f.kind !== 'image'),
 )
 const images = computed(() =>
   def.value.fields

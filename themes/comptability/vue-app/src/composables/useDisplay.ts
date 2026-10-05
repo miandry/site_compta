@@ -3,7 +3,7 @@ import { fieldDef, isDebitLabel } from '@/schema'
 import type { EntityRecord } from '@/services/entities'
 import { useLookupsStore } from '@/stores/lookups'
 import { useTermsStore } from '@/stores/terms'
-import { formatDate, formatMoney } from '@/utils/format'
+import { formatDate, formatDateTime, formatMoney } from '@/utils/format'
 
 /** Libellé affichable d'un champ (termes et nœuds résolus via les stores). */
 export function useDisplay() {
@@ -18,6 +18,10 @@ export function useDisplay() {
         return v === '' ? '' : formatMoney(Number(v))
       case 'date':
         return v ? formatDate(String(v)) : ''
+      case 'datetime':
+        return v ? formatDateTime(String(v)) : ''
+      case 'boolean':
+        return (field.booleanLabels ?? ['Actif', 'Inactif'])[v ? 0 : 1]
       case 'options':
         return field.options?.[String(v)] ?? (v ? String(v) : '')
       case 'term':

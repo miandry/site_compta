@@ -13,12 +13,13 @@ const auth = useAuthStore()
 const ui = useUiStore()
 
 const nav = computed(() => [
-  { title: '', links: [{ to: '/', label: 'Tableau de bord', exact: true }] },
+  { title: '', links: auth.isAdmin ? [{ to: '/', label: 'Tableau de bord', exact: true }] : [] },
   {
     title: 'Relevé',
     links: [
-      { to: '/operations', label: 'Opérations' },
+      { to: '/operations', label: 'Opérations', exact: true },
       { to: '/personnes', label: 'Personnes' },
+      { to: '/evenements', label: 'Événements' },
     ],
   },
   {
@@ -28,9 +29,10 @@ const nav = computed(() => [
       .map((vid) => ({
         to: `/parametres/${vid}`,
         label: VOCABULARIES[vid].label,
-      })),
+      }))
+      .concat(auth.isAdmin ? [{ to: '/reglage', label: 'Réglages IA' }] : []),
   },
-])
+].filter((group) => group.links.length))
 
 const pageTitle = computed(() => (route.meta.title as string) || SITE_NAME)
 
@@ -56,9 +58,11 @@ function isActive(to: string, exact?: boolean) {
   return route.path === to || route.path.startsWith(`${to}/`)
 }
 
+/** Rechargement complet : aucune donnée (personnes, listes) du compte précédent ne reste en mémoire. */
 async function logout() {
   await auth.logout()
-  router.push({ name: 'connexion' })
+  await router.replace({ name: 'connexion' })
+  window.location.reload()
 }
 </script>
 

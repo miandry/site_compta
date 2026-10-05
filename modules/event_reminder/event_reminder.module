@@ -1,0 +1,85 @@
+<?php
+
+/**
+ * @file
+ * Email + SMS reminder sent to the person concerned before an event.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\node\NodeInterface;
+
+/**
+ * Implements hook_help().
+ */
+function event_reminder_help($route_name, RouteMatchInterface $route_match) {
+  if ($route_name === 'help.page.event_reminder') {
+    return '<p>' . t("Envoie un email et un SMS à la personne concernée (champ « Personne concernée ») la veille d'un événement. Lancez le cron toutes les heures : <code>drush cron</code>.") . '</p>';
+  }
+}
+
+/**
+ * Implements hook_cron().
+ */
+function event_reminder_cron() {
+  $scheduler = \Drupal::service('event_reminder.scheduler');
+  $scheduler->rollRecurringEvents();
+  if (\Drupal::config('event_reminder.settings')->get('enabled')) {
+    $scheduler->queueDueReminders();
+  }
+}
+
+/**
+ * Implements hook_mail().
+ */
+function event_reminder_mail($key, &$message, $params) {
+  if ($key === 'test') {
+    $message['subject'] = t('Event Reminder : email de test');
+    $message['body'][] = t("Cet email confirme que les rappels d'événements peuvent être envoyés via @provider.", ['@provider' => $params['provider']]);
+    return;
+  }
+  if ($key !== 'reminder') {
+    return;
+  }
+  $config = \Drupal::config('event_reminder.settings');
+  $token = \Drupal::token();
+  $data = ['node' => $params['node']];
+  $options = ['langcode' => $message['langcode'], 'clear' => TRUE];
+  $message['subject'] = $token->replace((string) $config->get('email_subject'), $data, $options);
+  $message['body'][] = $token->replace((string) $config->get('email_body'), $data, $options);
+}
+
+/**
+ * Sends this module's emails through the third-party plugin, or Drupal's default.
+ */
+function event_reminder_route_mail(string $provider): void {
+  $config = \Drupal::configFactory()->getEditable('system.mail');
+  if ($provider === 'drupal') {
+    $config->clear('interface.event_reminder');
+  }
+  else {
+    $config->set('interface.event_reminder', 'event_reminder_third_party');
+  }
+  $config->save();
+}
+
+/**
+ * Implements hook_node_presave().
+ *
+ * A new date means a new reminder: the "sent" flag is reset.
+ */
+function event_reminder_node_presave(NodeInterface $node) {
+  if ($node->bundle() !== 'event' || !$node->hasField('field_reminder_sent')) {
+    return;
+  }
+  if ($node->isNew()) {
+    if ($node->get('field_reminder_sent')->isEmpty()) {
+      $node->set('field_reminder_sent', FALSE);
+    }
+    return;
+  }
+  $original = $node->original ?? NULL;
+  if ($original instanceof NodeInterface && $original->get('field_event_date')->value !== $node->get('field_event_date')->value) {
+    $node->set('field_reminder_sent', FALSE);
+    \Drupal::keyValue('event_reminder.progress')->delete($node->id());
+  }
+}

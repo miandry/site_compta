@@ -1,0 +1,5 @@
+event_reminder.settings:
+  title: 'Event Reminder'
+  description: "Rappels email / SMS envoyés avant la date d'un événement."
+  route_name: event_reminder.settings
+  parent: system.admin_config_system

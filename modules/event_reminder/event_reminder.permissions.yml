@@ -1,0 +1,4 @@
+administer event reminder:
+  title: 'Administer Event Reminder'
+  description: 'Configurer les rappels (délai, email, passerelle SMS, modèles de message).'
+  restrict access: true

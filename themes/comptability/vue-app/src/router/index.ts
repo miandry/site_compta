@@ -6,6 +6,7 @@ import EntityDetailView from '@/views/EntityDetailView.vue'
 import EntityListView from '@/views/EntityListView.vue'
 import LoginView from '@/views/LoginView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
+import ReglageView from '@/views/ReglageView.vue'
 import TaxonomyView from '@/views/TaxonomyView.vue'
 import { BUNDLES, VOCABULARIES } from '@/schema'
 import type { BundleName, Vocabulary } from '@/schema'
@@ -43,6 +44,10 @@ const router = createRouter({
         detailRoute('operations', 'operation', "Détail de l'opération"),
         entityRoute('personnes', 'person'),
         detailRoute('personnes', 'person', 'Fiche personne'),
+        entityRoute('evenements', 'event'),
+        detailRoute('evenements', 'event', "Détail de l'événement"),
+        { path: 'reglage', name: 'reglage', component: ReglageView, meta: { title: 'Réglages IA', adminOnly: true } },
+        { path: 'reglages-ia', redirect: '/reglage' },
         {
           path: 'parametres/:vocabulary',
           name: 'parametres',
@@ -72,11 +77,16 @@ router.beforeEach(async (to) => {
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { name: 'connexion', query: { redirect: to.fullPath } }
   }
+  // Tableau de bord (activité de tous) : administrateurs seulement ; les autres arrivent sur leurs opérations.
+  const home = auth.isAdmin ? { name: 'tableau-de-bord' } : { path: '/operations' }
   if (to.meta.guest && auth.isAuthenticated) {
-    return { name: 'tableau-de-bord' }
+    return home
   }
-  if (vocabulary && VOCABULARIES[vocabulary]?.adminOnly && !auth.isAdmin) {
-    return { name: 'tableau-de-bord' }
+  if (to.name === 'tableau-de-bord' && auth.isAuthenticated && !auth.isAdmin) {
+    return home
+  }
+  if (((vocabulary && VOCABULARIES[vocabulary]?.adminOnly) || to.meta.adminOnly) && !auth.isAdmin) {
+    return home
   }
   return true
 })

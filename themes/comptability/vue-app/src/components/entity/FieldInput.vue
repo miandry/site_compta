@@ -321,7 +321,7 @@ function removeImage(id: string) {
       v-else
       :id="inputId"
       class="input"
-      :type="field.kind === 'date' ? 'date' : field.kind === 'email' ? 'email' : field.kind === 'tel' ? 'tel' : 'text'"
+      :type="field.kind === 'date' ? 'date' : field.kind === 'datetime' ? 'datetime-local' : field.kind === 'time' ? 'time' : field.kind === 'email' ? 'email' : field.kind === 'tel' ? 'tel' : 'text'"
       :required="field.required"
       :placeholder="field.placeholder"
       :value="modelValue"

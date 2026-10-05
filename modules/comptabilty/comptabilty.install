@@ -1,0 +1,35 @@
+<?php
+
+/**
+ * @file
+ * Install and update hooks for comptabilty.
+ */
+
+/**
+ * Use mz_api_integration for « Réglages IA ».
+ */
+function comptabilty_update_9001() {
+  \Drupal::service('module_installer')->install(['mz_api_integration']);
+
+  $state = \Drupal::state();
+  $ids = ['gemini' => 'gemini', 'anthropic' => 'claude', 'openai' => 'chatgpt'];
+  $config = \Drupal::configFactory()->getEditable('mz_api_integration.settings');
+  foreach ((array) $state->get('comptabilty.ai_models', []) as $old => $model) {
+    if (isset($ids[$old]) && $model) {
+      $config->set("providers.{$ids[$old]}.model", $model);
+    }
+  }
+  foreach ((array) $state->get('comptabilty.ai_keys', []) as $old => $key) {
+    if (isset($ids[$old]) && $key) {
+      $config->set("providers.{$ids[$old]}.api_key", $key);
+    }
+  }
+  $provider = $state->get('comptabilty.ai_provider');
+  if (isset($ids[$provider])) {
+    $config->set('ai_provider', $ids[$provider]);
+  }
+  $config->save();
+
+  $state->deleteMultiple(['comptabilty.ai_provider', 'comptabilty.ai_models', 'comptabilty.ai_keys', 'comptabilty.ai_usage']);
+  return t('Réglages IA déplacés vers mz_api_integration.');
+}

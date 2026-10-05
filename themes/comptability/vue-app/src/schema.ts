@@ -5,7 +5,7 @@
 
 export type Vocabulary = 'operation_type' | 'category' | 'method_payment' | 'caisse'
 
-export type BundleName = 'operation' | 'person'
+export type BundleName = 'operation' | 'person' | 'event'
 
 export type FieldKind =
   | 'text'
@@ -15,6 +15,8 @@ export type FieldKind =
   | 'number'
   | 'money'
   | 'date'
+  | 'datetime'
+  | 'time'
   | 'boolean'
   | 'options'
   | 'term'
@@ -47,6 +49,14 @@ export interface FieldDef {
   multiple?: boolean
   /** Terme / nœud : bouton « + » pour créer l'élément depuis le formulaire. */
   creatable?: boolean
+  /** Calculé côté Drupal : affiché mais jamais envoyé à l'enregistrement. */
+  readonly?: boolean
+  /** Booléen : libellés [vrai, faux] (défaut Actif / Inactif). */
+  booleanLabels?: [string, string]
+  /** Champ du formulaire seulement : ni lu depuis Drupal ni envoyé. */
+  virtual?: boolean
+  /** Affiché (et obligatoire si `required`) seulement quand la condition est vraie. */
+  showIf?: (values: FormValues) => boolean
 }
 
 export interface DeriveContext {
@@ -87,6 +97,10 @@ export interface BundleDef {
   titleFrom?: (values: FormValues, ctx: DeriveContext) => string
   derive?: (values: FormValues, changed: string, ctx: DeriveContext) => void
   validate?: (values: FormValues) => string
+  /** Formulaire : remplit les champs virtuels à l'ouverture (création ou modification). */
+  hydrate?: (values: FormValues) => void
+  /** Formulaire : calcule les champs Drupal à partir des champs virtuels avant l'envoi. */
+  finalize?: (values: FormValues) => void
 }
 
 /** `adminOnly` : page de gestion réservée aux administrateurs (le backend refuse aussi l'écriture). */
@@ -114,6 +128,64 @@ export const VOCABULARIES: Record<Vocabulary, { label: string; description: stri
 
 /** Valeurs de la liste Drupal field_mouvement_argent. */
 export const MOUVEMENTS = { Entree: 'Entrée', Sortie: 'Sortie' }
+
+/** Valeurs de la liste Drupal field_event_repeat (module event_reminder). */
+export const REPEATS = {
+  once: 'Une seule fois',
+  daily: 'Chaque jour',
+  weekly: 'Chaque semaine',
+  monthly: 'Chaque mois',
+  yearly: 'Chaque année',
+}
+
+/** Jours de la semaine -> Date.getDay(). */
+const WEEKDAYS = { mon: 'Lundi', tue: 'Mardi', wed: 'Mercredi', thu: 'Jeudi', fri: 'Vendredi', sat: 'Samedi', sun: 'Dimanche' }
+const WEEKDAY_INDEX: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }
+
+const isRepeat = (v: FormValues, ...repeats: string[]) => repeats.includes(String(v.field_event_repeat || 'once'))
+const pad2 = (n: number) => String(n).padStart(2, '0')
+const localInput = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate()
+
+/**
+ * Prochaine occurrence (heure locale, >= maintenant) d'un événement répété,
+ * au format <input type="datetime-local">. Le jour du mois est ramené au
+ * dernier jour des mois plus courts (31 -> 30 avril, 28/29 février).
+ */
+export function nextEventOccurrence(v: FormValues, now = new Date()): string {
+  const [hh, mm] = String(v._time || '00:00').split(':').map(Number)
+  const at = (y: number, m: number, d: number) => new Date(y, m, Math.min(d, daysInMonth(y, m)), hh, mm)
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  let next: Date
+  switch (String(v.field_event_repeat)) {
+    case 'daily':
+      next = at(y, m, now.getDate())
+      if (next <= now) next = at(y, m, now.getDate() + 1)
+      break
+    case 'weekly': {
+      const delta = (WEEKDAY_INDEX[String(v._weekday)] - now.getDay() + 7) % 7
+      next = new Date(y, m, now.getDate() + delta, hh, mm)
+      if (next <= now) next = new Date(y, m, now.getDate() + delta + 7, hh, mm)
+      break
+    }
+    case 'monthly': {
+      const day = Number(v._monthday)
+      next = at(y, m, day)
+      if (next <= now) next = at(y, m + 1, day)
+      break
+    }
+    case 'yearly': {
+      const [, month, day] = String(v._yearday).split('-').map(Number)
+      next = at(y, month - 1, day)
+      if (next <= now) next = at(y + 1, month - 1, day)
+      break
+    }
+    default:
+      return String(v.field_event_date ?? '')
+  }
+  return localInput(next)
+}
 
 /** « Sortie » (ou « Débit ») -> sortie d'argent. */
 export function isDebitLabel(label: string): boolean {
@@ -186,18 +258,82 @@ export const BUNDLES: Record<BundleName, BundleDef> = {
     related: { bundle: 'operation', key: 'field_person', label: 'Opérations' },
     fields: [
       { key: 'title', label: 'Nom complet', kind: 'text', required: true, placeholder: 'Rakoto Jean' },
-      { key: 'field_phone_number', label: 'Numéro de téléphone', columnLabel: 'Téléphone', kind: 'tel', placeholder: '034 00 000 00' },
+      { key: 'field_phone', label: 'Numéro de téléphone', columnLabel: 'Téléphone', kind: 'tel', placeholder: '034 00 000 00' },
+      { key: 'field_field_email', label: 'Email', kind: 'email', placeholder: 'rakoto@exemple.mg' },
     ],
-    steps: [{ label: 'Personne', fields: ['title', 'field_phone_number'] }],
-    columns: ['title', 'field_phone_number'],
+    steps: [{ label: 'Personne', fields: ['title', 'field_phone', 'field_field_email'] }],
+    columns: ['title', 'field_phone', 'field_field_email'],
     mobile: {
       titleKeys: ['title'],
-      subtitleKeys: ['field_phone_number'],
+      subtitleKeys: ['field_phone', 'field_field_email'],
       avatarKey: 'title',
     },
     filters: [],
     sortField: 'title',
     sortOrder: 'ASC',
+  },
+
+  // Module Drupal event_reminder : email + SMS à la personne la veille de l'événement.
+  event: {
+    bundle: 'event',
+    label: 'Événement',
+    plural: 'Événements',
+    description: "Rendez-vous et échéances : la personne concernée reçoit un rappel par email et SMS la veille.",
+    createLabel: '+ Nouvel événement',
+    fields: [
+      { key: 'title', label: "Titre de l'événement", columnLabel: 'Événement', kind: 'text', required: true, placeholder: "Réunion des parents d'élèves" },
+      { key: 'field_event_repeat', label: 'Répétition', kind: 'options', options: REPEATS, required: true },
+      {
+        key: 'field_event_date',
+        label: "Date et heure de l'événement",
+        columnLabel: 'Prochaine date',
+        kind: 'datetime',
+        required: true,
+        showIf: (v) => isRepeat(v, 'once'),
+      },
+      { key: '_weekday', label: 'Jour de la semaine', kind: 'options', options: WEEKDAYS, required: true, virtual: true, showIf: (v) => isRepeat(v, 'weekly') },
+      { key: '_monthday', label: 'Jour du mois (1 à 31)', kind: 'number', required: true, virtual: true, placeholder: '15', showIf: (v) => isRepeat(v, 'monthly') },
+      { key: '_yearday', label: 'Date (jour et mois)', kind: 'date', required: true, virtual: true, showIf: (v) => isRepeat(v, 'yearly') },
+      { key: '_time', label: 'Heure', kind: 'time', required: true, virtual: true, showIf: (v) => !isRepeat(v, 'once') },
+      { key: 'field_person', label: 'Personne concernée', columnLabel: 'Personne', kind: 'node', target: 'person', required: true, creatable: true },
+      { key: 'field_reminder_sent', label: 'Rappel envoyé', columnLabel: 'Rappel', kind: 'boolean', readonly: true, booleanLabels: ['Envoyé', 'En attente'] },
+    ],
+    steps: [
+      {
+        label: 'Événement',
+        fields: ['title', 'field_event_repeat', 'field_event_date', '_weekday', '_monthday', '_yearday', '_time', 'field_person'],
+      },
+    ],
+    columns: ['field_event_date', 'title', 'field_person', 'field_event_repeat', 'field_reminder_sent'],
+    filters: ['field_event_repeat'],
+    mobile: {
+      titleKeys: ['title'],
+      subtitleKeys: ['field_person', 'field_event_repeat', 'field_reminder_sent'],
+      dateKey: 'field_event_date',
+      avatarKey: 'field_person',
+    },
+    dateFilterKey: 'field_event_date',
+    sortField: 'field_event_date',
+    sortOrder: 'DESC',
+    // Champs de planification déduits de la prochaine occurrence enregistrée.
+    hydrate: (v) => {
+      if (!v.field_event_repeat) v.field_event_repeat = 'once'
+      const date = String(v.field_event_date || '')
+      if (!date) return
+      const d = new Date(date)
+      v._time = date.slice(11, 16)
+      v._weekday = Object.keys(WEEKDAY_INDEX).find((k) => WEEKDAY_INDEX[k] === d.getDay()) ?? ''
+      v._monthday = d.getDate()
+      v._yearday = date.slice(0, 10)
+    },
+    finalize: (v) => {
+      v.field_event_date = nextEventOccurrence(v)
+    },
+    validate: (v) => {
+      const day = Number(v._monthday)
+      if (isRepeat(v, 'monthly') && !(Number.isInteger(day) && day >= 1 && day <= 31)) return 'Le jour du mois doit être compris entre 1 et 31.'
+      return ''
+    },
   },
 }
 

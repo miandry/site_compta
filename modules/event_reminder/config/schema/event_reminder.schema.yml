@@ -1,0 +1,66 @@
+event_reminder.settings:
+  type: config_object
+  label: 'Event Reminder settings'
+  mapping:
+    enabled:
+      type: boolean
+      label: 'Rappels activés'
+    days_before:
+      type: integer
+      label: "Jours avant l'événement"
+    timezone:
+      type: string
+      label: 'Fuseau horaire de référence'
+    send_email:
+      type: boolean
+      label: 'Envoyer un email'
+    send_sms:
+      type: boolean
+      label: 'Envoyer un SMS'
+    email_transport:
+      type: mapping
+      label: 'Fournisseur email'
+      mapping:
+        provider:
+          type: string
+          label: 'Fournisseur (drupal, bird, brevo, sendgrid, mailgun)'
+        from_email:
+          type: email
+          label: 'Adresse expéditeur'
+        from_name:
+          type: label
+          label: "Nom de l'expéditeur"
+        domain:
+          type: string
+          label: 'Domaine Mailgun'
+        region:
+          type: string
+          label: 'Région Mailgun (us, eu)'
+        api_key:
+          type: string
+          label: "Clé d'API (préférer settings.php : event_reminder_email_api_key)"
+    sms_gateway:
+      type: mapping
+      label: 'Passerelle SMS'
+      mapping:
+        provider:
+          type: string
+          label: 'Fournisseur (http_generic, twilio, orange_mg)'
+        endpoint:
+          type: string
+          label: 'URL / identifiant de la passerelle'
+        api_key:
+          type: string
+          label: "Clé d'API (préférer settings.php : event_reminder_sms_api_key)"
+        sender:
+          type: string
+          label: 'Expéditeur'
+    email_subject:
+      type: label
+      label: "Objet de l'email"
+    email_body:
+      type: text
+      label: "Corps de l'email"
+    sms_body:
+      type: string
+      label: 'Texte du SMS'

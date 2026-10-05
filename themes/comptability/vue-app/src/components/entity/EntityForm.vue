@@ -42,6 +42,7 @@ function reset() {
       if (field.kind === 'date' && field.required) base[field.key] = todayInput()
     }
   }
+  props.def.hydrate?.(base)
   Object.assign(values, base)
   step.value = 0
   localError.value = ''
@@ -58,6 +59,7 @@ function validateStep(index: number): string {
   for (const key of props.def.steps[index].fields) {
     const field = fieldDef(props.def, key)
     const value = values[key]
+    if (field.showIf && !field.showIf(values)) continue
     if (field.required && (value === '' || value == null || (Array.isArray(value) && !value.length))) {
       return `Renseignez « ${field.label} ».`
     }
@@ -94,7 +96,9 @@ function next() {
       localError.value = all
       return
     }
-    emit('submit', { ...values })
+    const out = { ...values }
+    props.def.finalize?.(out)
+    emit('submit', out)
     return
   }
   step.value += 1
@@ -121,15 +125,16 @@ function prev() {
         :key="group.label"
         class="space-y-4"
       >
-        <FieldInput
-          v-for="key in group.fields"
-          :key="key"
-          :field="fieldDef(def, key)"
-          :model-value="values[key]"
-          :files="files[key]"
-          @update:model-value="onChange(key, $event)"
-          @update:files="files[key] = $event"
-        />
+        <template v-for="key in group.fields" :key="key">
+          <FieldInput
+            v-if="!fieldDef(def, key).showIf || fieldDef(def, key).showIf!(values)"
+            :field="fieldDef(def, key)"
+            :model-value="values[key]"
+            :files="files[key]"
+            @update:model-value="onChange(key, $event)"
+            @update:files="files[key] = $event"
+          />
+        </template>
       </div>
     </div>
 

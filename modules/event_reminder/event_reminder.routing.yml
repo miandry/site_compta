@@ -1,0 +1,7 @@
+event_reminder.settings:
+  path: '/admin/config/system/event-reminder'
+  defaults:
+    _form: '\Drupal\event_reminder\Form\SettingsForm'
+    _title: 'Event Reminder'
+  requirements:
+    _permission: 'administer event reminder'

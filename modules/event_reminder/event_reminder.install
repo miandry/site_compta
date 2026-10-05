@@ -1,0 +1,179 @@
+<?php
+
+/**
+ * @file
+ * Creates the « Événement » content type and its fields.
+ */
+
+use Drupal\Core\Entity\Entity\EntityFormDisplay;
+use Drupal\Core\Entity\Entity\EntityViewDisplay;
+use Drupal\field\Entity\FieldConfig;
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\node\Entity\NodeType;
+
+/**
+ * Implements hook_install().
+ *
+ * Done in code rather than config/install because the content type (and the
+ * shared field_person storage, which targets « Personne » nodes) may already
+ * exist on the site.
+ */
+function event_reminder_install($is_syncing) {
+  if ($is_syncing) {
+    return;
+  }
+  if (!NodeType::load('event')) {
+    NodeType::create(['type' => 'event', 'name' => 'Événement', 'new_revision' => TRUE])->save();
+  }
+
+  // Legacy, unused fields of an earlier « event » content type.
+  foreach (\Drupal::service('entity_field.manager')->getFieldDefinitions('node', 'event') as $name => $definition) {
+    if (str_starts_with($name, 'field_field_') && ($field = FieldConfig::loadByName('node', 'event', $name))) {
+      $field->delete();
+    }
+  }
+
+  _event_reminder_ensure_field('field_event_date', 'datetime', ['datetime_type' => 'datetime'], [
+    'label' => "Date de l'événement",
+    'required' => TRUE,
+  ]);
+  _event_reminder_ensure_field('field_person', 'entity_reference', ['target_type' => 'node'], [
+    'label' => 'Personne concernée',
+    'required' => TRUE,
+    'settings' => [
+      'handler' => 'default:node',
+      'handler_settings' => ['target_bundles' => ['person' => 'person'], 'auto_create' => FALSE],
+    ],
+  ]);
+  _event_reminder_ensure_field('field_reminder_sent', 'boolean', [], [
+    'label' => 'Rappel envoyé',
+    'default_value' => [['value' => 0]],
+    'settings' => ['on_label' => 'Oui', 'off_label' => 'Non'],
+  ]);
+  _event_reminder_ensure_repeat_field();
+
+  $form = EntityFormDisplay::load('node.event.default') ?? EntityFormDisplay::create([
+    'targetEntityType' => 'node',
+    'bundle' => 'event',
+    'mode' => 'default',
+    'status' => TRUE,
+  ]);
+  $form->setComponent('field_event_date', ['type' => 'datetime_default', 'weight' => 1])
+    ->setComponent('field_person', ['type' => 'entity_reference_autocomplete', 'weight' => 2])
+    ->removeComponent('field_reminder_sent')
+    ->save();
+
+  $view = EntityViewDisplay::load('node.event.default') ?? EntityViewDisplay::create([
+    'targetEntityType' => 'node',
+    'bundle' => 'event',
+    'mode' => 'default',
+    'status' => TRUE,
+  ]);
+  $view->setComponent('field_event_date', ['type' => 'datetime_default', 'label' => 'inline', 'weight' => 1])
+    ->setComponent('field_person', ['type' => 'entity_reference_label', 'label' => 'inline', 'weight' => 2])
+    ->setComponent('field_reminder_sent', ['type' => 'boolean', 'label' => 'inline', 'weight' => 3])
+    ->save();
+}
+
+/**
+ * Adds the « Répétition » field (daily, weekly, monthly, yearly) to events.
+ */
+function event_reminder_update_9001() {
+  _event_reminder_ensure_repeat_field();
+  return t('Champ « Répétition » ajouté aux événements.');
+}
+
+/**
+ * « Répétition » required, with the « Une seule fois » choice.
+ */
+function event_reminder_update_9002() {
+  $storage = FieldStorageConfig::loadByName('node', 'field_event_repeat');
+  $storage->setSetting('allowed_values', ['once' => 'Une seule fois'] + $storage->getSetting('allowed_values'))->save();
+  FieldConfig::loadByName('node', 'event', 'field_event_repeat')
+    ->setRequired(TRUE)
+    ->setDefaultValue([['value' => 'once']])
+    ->setDescription("Une fois passé, un événement répété est reporté à sa prochaine occurrence et un nouveau rappel est envoyé.")
+    ->save();
+
+  $node_storage = \Drupal::entityTypeManager()->getStorage('node');
+  $ids = $node_storage->getQuery()->accessCheck(FALSE)->condition('type', 'event')->notExists('field_event_repeat')->execute();
+  foreach ($node_storage->loadMultiple($ids) as $node) {
+    $node->set('field_event_repeat', 'once')->save();
+  }
+  return t('Répétition obligatoire (@count événement(s) mis sur « Une seule fois »).', ['@count' => count($ids)]);
+}
+
+/**
+ * Adds the third-party email provider settings (Brevo, SendGrid, Mailgun).
+ */
+function event_reminder_update_9003() {
+  $config = \Drupal::configFactory()->getEditable('event_reminder.settings');
+  if ($config->get('email_transport') === NULL) {
+    $config->set('email_transport', [
+      'provider' => 'drupal',
+      'from_email' => '',
+      'from_name' => '',
+      'domain' => '',
+      'region' => 'us',
+      'api_key' => '',
+    ])->save();
+  }
+  return t('Réglages du fournisseur email ajoutés.');
+}
+
+/**
+ * Creates field_event_repeat and places it in the displays.
+ */
+function _event_reminder_ensure_repeat_field(): void {
+  _event_reminder_ensure_field('field_event_repeat', 'list_string', [
+    'allowed_values' => [
+      'once' => 'Une seule fois',
+      'daily' => 'Chaque jour',
+      'weekly' => 'Chaque semaine',
+      'monthly' => 'Chaque mois',
+      'yearly' => 'Chaque année',
+    ],
+  ], [
+    'label' => 'Répétition',
+    'required' => TRUE,
+    'default_value' => [['value' => 'once']],
+    'description' => "Une fois passé, un événement répété est reporté à sa prochaine occurrence et un nouveau rappel est envoyé.",
+  ]);
+  if ($form = EntityFormDisplay::load('node.event.default')) {
+    $form->setComponent('field_event_repeat', ['type' => 'options_select', 'weight' => 3])->save();
+  }
+  if ($view = EntityViewDisplay::load('node.event.default')) {
+    $view->setComponent('field_event_repeat', ['type' => 'list_default', 'label' => 'inline', 'weight' => 4])->save();
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function event_reminder_uninstall() {
+  \Drupal::queue('event_reminder_queue')->deleteQueue();
+  \Drupal::configFactory()->getEditable('system.mail')->clear('interface.event_reminder')->save();
+  \Drupal::keyValue('event_reminder.progress')->deleteAll();
+}
+
+/**
+ * Creates a node field (and its storage) on « event » when missing.
+ */
+function _event_reminder_ensure_field(string $name, string $type, array $storage_settings, array $field): void {
+  if (!FieldStorageConfig::loadByName('node', $name)) {
+    FieldStorageConfig::create([
+      'field_name' => $name,
+      'entity_type' => 'node',
+      'type' => $type,
+      'settings' => $storage_settings,
+      'cardinality' => 1,
+    ])->save();
+  }
+  if (!FieldConfig::loadByName('node', 'event', $name)) {
+    FieldConfig::create($field + [
+      'field_name' => $name,
+      'entity_type' => 'node',
+      'bundle' => 'event',
+    ])->save();
+  }
+}

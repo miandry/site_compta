@@ -1,0 +1,20 @@
+enabled: true
+days_before: 1
+timezone: Indian/Antananarivo
+send_email: true
+send_sms: true
+email_transport:
+  provider: drupal
+  from_email: ''
+  from_name: ''
+  domain: ''
+  region: us
+  api_key: ''
+sms_gateway:
+  provider: http_generic
+  endpoint: ''
+  api_key: ''
+  sender: EVENT
+email_subject: 'Rappel : [node:title] demain'
+email_body: "Bonjour [node:field_person:entity:title],\n\nRappel : l'événement « [node:title] » a lieu le [node:field_event_date:date:custom:d/m/Y à H:i].\n\nCordialement."
+sms_body: 'Rappel: [node:title] le [node:field_event_date:date:custom:d/m H:i]'

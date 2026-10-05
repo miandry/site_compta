@@ -6,3 +6,4 @@ package: Custom
 dependencies:
   - drupal:node
   - comptability_access:comptability_access
+  - mz_api_integration:mz_api_integration

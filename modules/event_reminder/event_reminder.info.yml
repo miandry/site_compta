@@ -1,0 +1,13 @@
+name: 'Event Reminder'
+type: module
+description: "Envoie un email et un SMS à la personne concernée 1 jour avant la date d'un événement."
+core_version_requirement: ^9.5 || ^10 || ^11
+php: 8.1
+package: Custom
+configure: event_reminder.settings
+dependencies:
+  - drupal:node
+  - drupal:datetime
+  - drupal:options
+  - drupal:user
+  - token:token

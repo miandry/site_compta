@@ -25,7 +25,7 @@ const thumbnail = computed(() => props.record.files[props.field.key]?.[0]?.url ?
 
 <template>
   <span v-if="field.kind === 'boolean'" class="badge" :class="value ? 'badge-success' : 'badge-muted'">
-    {{ value ? 'Actif' : 'Inactif' }}
+    {{ text }}
   </span>
   <span v-else-if="isDirection" class="badge" :class="isDebitLabel(text) ? 'badge-accent' : 'badge-success'">
     {{ text }}

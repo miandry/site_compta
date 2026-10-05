@@ -2,7 +2,7 @@ import { api, buildListParams } from './api'
 import type { Filter } from './api'
 import type { BundleDef, BundleName, DeriveContext, FormValues } from '@/schema'
 import { BUNDLES } from '@/schema'
-import { bool, num, refs, scalar, toDateInput, toDrupalDateTime } from '@/utils/format'
+import { bool, num, refs, scalar, toDateInput, toDateTimeInput, toDrupalDateTime, toDrupalUtcDateTime } from '@/utils/format'
 import type { Row } from '@/utils/format'
 
 const SAVE = '/api_solutions/save'
@@ -76,6 +76,7 @@ export function normalize(def: BundleDef, row: Row): EntityRecord {
 
   for (const field of def.fields) {
     const key = field.key
+    if (field.virtual) continue
     switch (field.kind) {
       case 'money':
       case 'number':
@@ -83,6 +84,9 @@ export function normalize(def: BundleDef, row: Row): EntityRecord {
         break
       case 'date':
         values[key] = toDateInput(scalar(row, key))
+        break
+      case 'datetime':
+        values[key] = toDateTimeInput(scalar(row, key))
         break
       case 'boolean':
         values[key] = bool(row, key)
@@ -123,7 +127,7 @@ export function toPayload(def: BundleDef, values: FormValues, ctx: DeriveContext
   if (id) payload.nid = Number(id)
 
   for (const field of def.fields) {
-    if (field.key === 'title') continue
+    if (field.key === 'title' || field.readonly || field.virtual) continue
     const value = values[field.key]
     const filled = value !== '' && value !== null && value !== undefined
     switch (field.kind) {
@@ -134,14 +138,20 @@ export function toPayload(def: BundleDef, values: FormValues, ctx: DeriveContext
       case 'date':
         if (filled) payload[field.key] = toDrupalDateTime(String(value))
         break
+      case 'datetime':
+        if (filled) payload[field.key] = toDrupalUtcDateTime(String(value))
+        break
       case 'boolean':
         payload[field.key] = value ? 1 : 0
         break
       // Une référence vide n'est jamais envoyée : api_solutions créerait un terme/nœud sans nom.
       case 'term':
       case 'node':
+        if (filled) payload[field.key] = Number(value)
+        break
+      // Liste : '' vide le champ (ex. retirer la répétition d'un événement).
       case 'options':
-        if (filled) payload[field.key] = field.kind === 'options' ? value : Number(value)
+        payload[field.key] = filled ? value : ''
         break
       case 'image':
         if (Array.isArray(value) && value.length) payload[field.key] = value.map(Number)

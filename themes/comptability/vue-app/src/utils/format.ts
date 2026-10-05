@@ -41,6 +41,29 @@ export function toDrupalDateTime(value: string): string {
   return `${value.slice(0, 10)}T12:00:00`
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+/** Champ `datetime` Drupal (UTC, YYYY-MM-DDTHH:mm:ss) -> <input type="datetime-local"> (heure locale). */
+export function toDateTimeInput(value?: string | null): string {
+  if (!value) return ''
+  const d = new Date(`${value.slice(0, 19)}Z`)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+/** <input type="datetime-local"> (heure locale) -> champ `datetime` Drupal en UTC. */
+export function toDrupalUtcDateTime(value: string): string {
+  return new Date(value).toISOString().slice(0, 19)
+}
+
+/** Valeur d'un <input type="datetime-local"> -> « 4 oct. 2026, 10:00 ». */
+export function formatDateTime(value?: string | null): string {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(d)
+}
+
 /** Valeur scalaire d'un champ renvoyé par entity_parser (string, [string], {value}). */
 export function scalar(row: Row, key: string): string {
   let raw = row[key]
