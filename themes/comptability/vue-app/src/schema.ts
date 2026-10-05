@@ -69,6 +69,8 @@ export interface MobileListDef {
   titleKeys: string[]
   subtitleKeys: string[]
   amountKey?: string
+  /** Petit texte affiché sous le montant (ex. auteur). */
+  amountNoteKey?: string
   dateKey?: string
   avatarKey: string
 }
@@ -212,6 +214,7 @@ export const BUNDLES: Record<BundleName, BundleDef> = {
       { key: 'field_method_payment', label: 'Moyen de paiement', columnLabel: 'Moyen', kind: 'term', vocabulary: 'method_payment' },
       { key: 'field_caisse', label: 'Caisse', kind: 'term', vocabulary: 'caisse' },
       { key: 'field_image_prof', label: 'Image justificatif', columnLabel: 'Justificatif', kind: 'image', multiple: false },
+      { key: 'uid', label: 'Auteur', kind: 'text', readonly: true },
     ],
     steps: [
       { label: 'Opération', fields: ['field_category', 'field_mouvement_argent', 'field_amount', 'field_label'] },
@@ -227,12 +230,14 @@ export const BUNDLES: Record<BundleName, BundleDef> = {
       'field_caisse',
       'field_mouvement_argent',
       'field_amount',
+      'uid',
     ],
     filters: ['field_mouvement_argent', 'field_caisse', 'field_category', 'field_operation_type'],
     mobile: {
       titleKeys: ['field_label', 'title'],
       subtitleKeys: ['field_person', 'field_caisse'],
       amountKey: 'field_amount',
+      amountNoteKey: 'uid',
       dateKey: 'field_operation_date',
       avatarKey: 'field_person',
     },

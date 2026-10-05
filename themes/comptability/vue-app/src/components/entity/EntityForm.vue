@@ -13,6 +13,8 @@ const props = defineProps<{
   def: BundleDef
   initial?: EntityRecord | null
   submitting?: boolean
+  /** Alerte bloquante renvoyée à l'enregistrement (ex. doublon). */
+  alert?: string
 }>()
 
 const emit = defineEmits<{
@@ -136,6 +138,16 @@ function prev() {
           />
         </template>
       </div>
+    </div>
+
+    <div
+      v-if="alert"
+      role="alert"
+      data-testid="form-alert"
+      class="mt-4 flex items-start gap-3 rounded-neu border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+    >
+      <span class="text-lg leading-none">⚠</span>
+      <span>{{ alert }}</span>
     </div>
 
     <p v-if="localError" class="mt-4 rounded-pill neu-inset px-4 py-3 text-sm text-rose-600">

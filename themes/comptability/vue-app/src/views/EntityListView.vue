@@ -13,7 +13,7 @@ import { useDisplay } from '@/composables/useDisplay'
 import type { BundleName, FieldDef, FormValues, LookupItem, Vocabulary } from '@/schema'
 import { BUNDLES, fieldDef } from '@/schema'
 import type { EntityRecord } from '@/services/entities'
-import { listEntities, removeEntity, saveEntity } from '@/services/entities'
+import { duplicateMessage, listEntities, removeEntity, saveEntity } from '@/services/entities'
 import { useLookupsStore } from '@/stores/lookups'
 import { useTermsStore } from '@/stores/terms'
 import { useUiStore } from '@/stores/ui'
@@ -50,6 +50,7 @@ const activeFilterCount = computed(
 )
 
 const modalOpen = ref(false)
+const formAlert = ref('')
 const editing = ref<EntityRecord | null>(null)
 const submitting = ref(false)
 
@@ -231,6 +232,7 @@ function goPage(next: number) {
 
 function openCreate() {
   editing.value = null
+  formAlert.value = ''
   modalOpen.value = true
 }
 
@@ -243,6 +245,7 @@ function openDetail(record: EntityRecord) {
 
 function openEdit(record: EntityRecord) {
   editing.value = record
+  formAlert.value = ''
   modalOpen.value = true
 }
 
@@ -253,13 +256,15 @@ async function afterChange() {
 
 async function onSubmit(values: FormValues) {
   submitting.value = true
+  formAlert.value = ''
   try {
     await saveEntity(props.bundle, values, lookups.deriveContext(), editing.value?.id)
     ui.notify('success', editing.value ? `${def.value.label} mis(e) à jour.` : `${def.value.label} créé(e).`)
     modalOpen.value = false
     await afterChange()
   } catch (err) {
-    ui.notify('error', extractErrorMessage(err))
+    formAlert.value = duplicateMessage(err)
+    ui.notify('error', formAlert.value || extractErrorMessage(err))
   } finally {
     submitting.value = false
   }
@@ -487,6 +492,7 @@ async function onDelete(record: EntityRecord) {
         :def="def"
         :initial="editing"
         :submitting="submitting"
+        :alert="formAlert"
         @submit="onSubmit"
         @cancel="modalOpen = false"
       />

@@ -10,7 +10,7 @@ import { useDisplay } from '@/composables/useDisplay'
 import type { BundleName, FormValues, Vocabulary } from '@/schema'
 import { BUNDLES, fieldDef } from '@/schema'
 import type { EntityRecord } from '@/services/entities'
-import { getEntity, listEntities, removeEntity, saveEntity } from '@/services/entities'
+import { duplicateMessage, getEntity, listEntities, removeEntity, saveEntity } from '@/services/entities'
 import type { RevisionEntry } from '@/services/history'
 import { fetchHistory } from '@/services/history'
 import { useLookupsStore } from '@/stores/lookups'
@@ -34,6 +34,7 @@ const history = ref<RevisionEntry[]>([])
 const loading = ref(true)
 const error = ref('')
 const editOpen = ref(false)
+const formAlert = ref('')
 const submitting = ref(false)
 
 const amountKey = computed(() => def.value.mobile?.amountKey ?? def.value.fields.find((f) => f.kind === 'money')?.key)
@@ -150,6 +151,7 @@ function openRelated(r: EntityRecord) {
 async function onSubmit(values: FormValues) {
   if (!record.value) return
   submitting.value = true
+  formAlert.value = ''
   try {
     await saveEntity(props.bundle, values, lookups.deriveContext(), record.value.id)
     ui.notify('success', `${def.value.label} mis(e) à jour.`)
@@ -157,7 +159,8 @@ async function onSubmit(values: FormValues) {
     lookups.invalidate(props.bundle)
     await load()
   } catch (err) {
-    ui.notify('error', extractErrorMessage(err))
+    formAlert.value = duplicateMessage(err)
+    ui.notify('error', formAlert.value || extractErrorMessage(err))
   } finally {
     submitting.value = false
   }
@@ -183,7 +186,7 @@ async function onDelete() {
         <AppIcon name="back" />
       </button>
       <div v-if="record" class="flex gap-3">
-        <button type="button" class="btn-icon h-10 w-10" title="Modifier" aria-label="Modifier" @click="editOpen = true">
+        <button type="button" class="btn-icon h-10 w-10" title="Modifier" aria-label="Modifier" @click="formAlert = ''; editOpen = true">
           <AppIcon name="edit" />
         </button>
         <button
@@ -286,7 +289,7 @@ async function onDelete() {
     </template>
 
     <BaseModal :open="editOpen" :title="`Modifier — ${def.label}`" @close="editOpen = false">
-      <EntityForm :def="def" :initial="record" :submitting="submitting" @submit="onSubmit" @cancel="editOpen = false" />
+      <EntityForm :def="def" :initial="record" :submitting="submitting" :alert="formAlert" @submit="onSubmit" @cancel="editOpen = false" />
     </BaseModal>
   </div>
 </template>

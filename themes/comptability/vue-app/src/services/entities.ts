@@ -77,6 +77,12 @@ export function normalize(def: BundleDef, row: Row): EntityRecord {
   for (const field of def.fields) {
     const key = field.key
     if (field.virtual) continue
+    // Auteur du nœud : api_solutions renvoie { uid, name }.
+    if (key === 'uid') {
+      const owner = row.uid as Row | null | undefined
+      values[key] = owner && typeof owner === 'object' ? String(owner.name ?? '') : ''
+      continue
+    }
     switch (field.kind) {
       case 'money':
       case 'number':
@@ -224,6 +230,12 @@ export async function saveEntity(
     throw new Error(data.message || "Échec de l'enregistrement")
   }
   return String(data.item)
+}
+
+/** Message du refus « doublon » (HTTP 409) renvoyé par Drupal, sinon ''. */
+export function duplicateMessage(error: unknown): string {
+  const data = (error as { response?: { status?: number; data?: { code?: string; message?: string } } })?.response
+  return data?.status === 409 && data.data?.code === 'duplicate' ? data.data.message || 'Opération en double.' : ''
 }
 
 /** Suppression douce : dépublication (status = 0), comme le reste du thème. */

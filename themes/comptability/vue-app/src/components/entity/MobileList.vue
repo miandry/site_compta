@@ -71,6 +71,10 @@ function amount(record: EntityRecord) {
   return key ? signedMoney(props.def, record, Number(record.values[key]) || 0) : null
 }
 
+function amountNote(record: EntityRecord): string {
+  return props.mobile.amountNoteKey ? valueOf(record, props.mobile.amountNoteKey) : ''
+}
+
 function act(action: string) {
   const record = selected.value
   selected.value = null
@@ -108,8 +112,13 @@ function act(action: string) {
             </span>
             <span class="block truncate text-xs text-neu-muted">{{ subtitle(record) || '—' }}</span>
           </span>
-          <span v-if="amount(record)" class="shrink-0 font-mono text-sm font-semibold" :class="amount(record)!.tone">
-            {{ amount(record)!.text }}
+          <span v-if="amount(record) || amountNote(record)" class="flex shrink-0 flex-col items-end">
+            <span v-if="amount(record)" class="font-mono text-sm font-semibold" :class="amount(record)!.tone">
+              {{ amount(record)!.text }}
+            </span>
+            <span v-if="amountNote(record)" class="max-w-[7rem] truncate text-[0.7rem] text-neu-muted" data-testid="mobile-author">
+              {{ amountNote(record) }}
+            </span>
           </span>
         </button>
       </li>
@@ -127,9 +136,12 @@ function act(action: string) {
           <p class="truncate font-semibold text-neu-dark">{{ firstText(selected, mobile.titleKeys) || def.label }}</p>
           <p class="truncate text-xs text-neu-muted">{{ subtitle(selected) }}</p>
         </div>
-        <p v-if="amount(selected)" class="font-mono text-base font-semibold" :class="amount(selected)!.tone">
-          {{ amount(selected)!.text }}
-        </p>
+        <div v-if="amount(selected) || amountNote(selected)" class="flex flex-col items-end">
+          <p v-if="amount(selected)" class="font-mono text-base font-semibold" :class="amount(selected)!.tone">
+            {{ amount(selected)!.text }}
+          </p>
+          <p v-if="amountNote(selected)" class="max-w-[8rem] truncate text-xs text-neu-muted">{{ amountNote(selected) }}</p>
+        </div>
       </div>
     </ActionSheet>
   </div>
