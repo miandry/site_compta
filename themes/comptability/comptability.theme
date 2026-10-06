@@ -22,3 +22,17 @@ function comptability_preprocess_page(&$variables) {
     'siteName' => \Drupal::config('system.site')->get('name') ?: 'Comptabilité',
   ];
 }
+
+/**
+ * Implements hook_page_attachments_alter().
+ *
+ * App-like mobile screen: no pinch / double-tap zoom.
+ */
+function comptability_page_attachments_alter(array &$attachments) {
+  foreach ($attachments['#attached']['html_head'] ?? [] as $i => $item) {
+    if (($item[1] ?? '') === 'viewport') {
+      $attachments['#attached']['html_head'][$i][0]['#attributes']['content'] =
+        'width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+    }
+  }
+}
