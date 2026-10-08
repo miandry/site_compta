@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import BulkOperationView from '@/views/BulkOperationView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import EntityDetailView from '@/views/EntityDetailView.vue'
 import EntityListView from '@/views/EntityListView.vue'
@@ -42,6 +43,12 @@ const router = createRouter({
         { path: '', name: 'tableau-de-bord', component: DashboardView, meta: { title: 'Tableau de bord' } },
         entityRoute('operations', 'operation'),
         detailRoute('operations', 'operation', "Détail de l'opération"),
+        {
+          path: 'operations/saisie-multiple',
+          name: 'operation-bulk',
+          component: BulkOperationView,
+          meta: { title: 'Saisie multiple' },
+        },
         entityRoute('personnes', 'person'),
         detailRoute('personnes', 'person', 'Fiche personne'),
         entityRoute('evenements', 'event'),

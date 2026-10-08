@@ -22,11 +22,15 @@ body { position: relative; }
 }
 #vue-app { overflow-wrap: anywhere; }
 
+/* Under 16px, Safari and Chrome zoom the page when a field gets focus.
+   Applies at every width: phones in "desktop site" mode are wider than 800px. */
+input, select, textarea { font-size: 16px !important; }
+/* No double-tap zoom, and no 300 ms delay before a tap becomes a click. */
+a, button, input, select, textarea, label, [role='button'] { touch-action: manipulation; }
+
 /* Mobile: no zoom, vertical (y) scroll only. */
 @media (max-width: 800px) {
   html, body { touch-action: pan-y; }
   /* Wide tables keep their own inner horizontal scroll. */
   .overflow-x-auto { touch-action: pan-x pan-y; }
-  /* iOS zooms on focus when the font is under 16px. */
-  input, select, textarea { font-size: 16px !important; }
 }

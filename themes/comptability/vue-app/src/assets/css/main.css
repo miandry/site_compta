@@ -79,7 +79,8 @@
     border: none;
     box-shadow: var(--shadow-in);
     padding: 0.85rem 1.25rem;
-    font-size: 0.95rem;
+    /* Under 16px, mobile browsers zoom the page when the field gets focus. */
+    font-size: 16px;
     color: var(--neu-text);
     -webkit-appearance: none;
     appearance: none;

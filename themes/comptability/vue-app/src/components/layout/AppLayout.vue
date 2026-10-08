@@ -18,6 +18,7 @@ const nav = computed(() => [
     title: 'Relevé',
     links: [
       { to: '/operations', label: 'Opérations', exact: true },
+      { to: '/operations/saisie-multiple', label: 'Saisie multiple' },
       { to: '/personnes', label: 'Personnes' },
       { to: '/evenements', label: 'Événements' },
     ],

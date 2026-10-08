@@ -20,11 +20,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-end justify-center bg-neu-dark/25 p-4 sm:items-center"
+      class="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-neu-dark/25 p-4 sm:items-center"
       @click.self="emit('close')"
     >
       <div
-        class="card w-full max-w-lg overflow-hidden p-1"
+        class="card w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overflow-x-hidden overscroll-contain p-1"
         role="dialog"
         aria-modal="true"
         :aria-label="title"

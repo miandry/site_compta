@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import CellValue from '@/components/entity/CellValue.vue'
 import EntityForm from '@/components/entity/EntityForm.vue'
 import MobileList from '@/components/entity/MobileList.vue'
@@ -286,7 +286,12 @@ async function onDelete(record: EntityRecord) {
   <div class="space-y-5" :class="{ 'max-md:flex max-md:h-full max-md:flex-col': def.mobile }">
     <div class="flex flex-wrap items-center justify-between gap-3" :class="{ 'hidden md:flex': def.mobile }">
       <p class="max-w-2xl text-sm text-neu-muted">{{ def.description }}</p>
-      <button type="button" class="btn-primary" @click="openCreate">{{ def.createLabel }}</button>
+      <div class="flex flex-wrap gap-2">
+        <RouterLink v-if="bundle === 'operation'" to="/operations/saisie-multiple" class="btn-secondary">
+          Saisie multiple
+        </RouterLink>
+        <button type="button" class="btn-primary" @click="openCreate">{{ def.createLabel }}</button>
+      </div>
     </div>
 
     <div v-if="def.mobile" class="flex shrink-0 gap-2 md:hidden">
