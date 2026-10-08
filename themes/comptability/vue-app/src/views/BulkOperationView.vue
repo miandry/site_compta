@@ -323,7 +323,8 @@ const STATUS_CLASS: Record<LineStatus, string> = {
         <textarea
           id="bulk-lines"
           v-model="text"
-          class="input min-h-[180px] resize-y rounded-neu font-mono leading-relaxed"
+          class="input h-[55dvh] min-h-[320px] resize-y rounded-neu font-mono leading-relaxed lg:h-[60vh]"
+          rows="14"
           data-testid="bulk-lines"
           spellcheck="false"
           :placeholder="'-23616000 #she\n13000000 #miandry cash point\n-4545+2343 #hto\n(1231 + 3344)/345 #part'"
