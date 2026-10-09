@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BulkOperationView from '@/views/BulkOperationView.vue'
+import LotListView from '@/views/LotListView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import EntityDetailView from '@/views/EntityDetailView.vue'
 import EntityListView from '@/views/EntityListView.vue'
@@ -48,6 +49,12 @@ const router = createRouter({
           name: 'operation-bulk',
           component: BulkOperationView,
           meta: { title: 'Saisie multiple' },
+        },
+        {
+          path: 'operations/saisies',
+          name: 'operation-lots',
+          component: LotListView,
+          meta: { title: 'Saisies multiples' },
         },
         entityRoute('personnes', 'person'),
         detailRoute('personnes', 'person', 'Fiche personne'),

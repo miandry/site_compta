@@ -33,3 +33,73 @@ function comptabilty_update_9001() {
   $state->deleteMultiple(['comptabilty.ai_provider', 'comptabilty.ai_models', 'comptabilty.ai_keys', 'comptabilty.ai_usage']);
   return t('Réglages IA déplacés vers mz_api_integration.');
 }
+
+/**
+ * Content type « Lot d'opérations » : historique de la saisie multiple.
+ */
+function comptabilty_update_9002() {
+  $bundle = 'operation_lot';
+  if (!\Drupal\node\Entity\NodeType::load($bundle)) {
+    \Drupal\node\Entity\NodeType::create([
+      'type' => $bundle,
+      'name' => "Lot d'opérations",
+      'description' => 'Saisie multiple : lignes « montant #libellé », champs communs et opérations créées.',
+      'new_revision' => FALSE,
+      'display_submitted' => FALSE,
+    ])->save();
+  }
+
+  // Own storages: raw lines, net total, created operation IDs ("95,96,97").
+  $new = [
+    'field_lot_lines' => ['type' => 'string_long', 'label' => 'Lignes'],
+    'field_lot_total' => ['type' => 'integer', 'label' => 'Total net (Ar)'],
+    'field_lot_operations' => ['type' => 'string_long', 'label' => 'Opérations créées (nid)'],
+  ];
+  foreach ($new as $name => $info) {
+    if (!\Drupal\field\Entity\FieldStorageConfig::loadByName('node', $name)) {
+      \Drupal\field\Entity\FieldStorageConfig::create([
+        'field_name' => $name,
+        'entity_type' => 'node',
+        'type' => $info['type'],
+        'cardinality' => 1,
+      ])->save();
+    }
+  }
+
+  // Shared with « operation »: same storages, same targets.
+  $reused = [
+    'field_operation_date' => 'Date opération',
+    'field_person' => 'Personne',
+    'field_category' => 'Catégorie',
+    'field_caisse' => 'Caisse',
+  ];
+  $form = \Drupal::service('entity_display.repository')->getFormDisplay('node', $bundle);
+  $view = \Drupal::service('entity_display.repository')->getViewDisplay('node', $bundle);
+  foreach ($new + array_map(fn($label) => ['label' => $label], $reused) as $name => $info) {
+    if (\Drupal\field\Entity\FieldConfig::loadByName('node', $bundle, $name)) {
+      continue;
+    }
+    $values = [
+      'field_name' => $name,
+      'entity_type' => 'node',
+      'bundle' => $bundle,
+      'label' => $info['label'],
+    ];
+    if (isset($reused[$name]) && ($source = \Drupal\field\Entity\FieldConfig::loadByName('node', 'operation', $name))) {
+      $values['settings'] = $source->getSettings();
+    }
+    \Drupal\field\Entity\FieldConfig::create($values)->save();
+    $form->setComponent($name, ['region' => 'content']);
+    $view->setComponent($name, ['region' => 'content', 'label' => 'inline']);
+  }
+  $form->save();
+  $view->save();
+
+  $role = \Drupal\user\Entity\Role::load('authenticated');
+  foreach (['create', 'edit own', 'delete own'] as $op) {
+    $role->grantPermission("$op $bundle content");
+  }
+  $role->save();
+
+  return t("Content type « Lot d'opérations » créé.");
+}

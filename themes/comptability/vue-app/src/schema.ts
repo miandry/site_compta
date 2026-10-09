@@ -5,7 +5,7 @@
 
 export type Vocabulary = 'operation_type' | 'category' | 'method_payment' | 'caisse'
 
-export type BundleName = 'operation' | 'person' | 'event'
+export type BundleName = 'operation' | 'person' | 'event' | 'operation_lot'
 
 export type FieldKind =
   | 'text'
@@ -338,6 +338,34 @@ export const BUNDLES: Record<BundleName, BundleDef> = {
       const day = Number(v._monthday)
       if (isRepeat(v, 'monthly') && !(Number.isInteger(day) && day >= 1 && day <= 31)) return 'Le jour du mois doit être compris entre 1 et 31.'
       return ''
+    },
+  },
+
+  // Saisie multiple : lignes brutes + champs communs + opérations créées (module comptabilty).
+  operation_lot: {
+    bundle: 'operation_lot',
+    label: 'Lot',
+    plural: 'Saisies multiples',
+    description: 'Historique des saisies multiples.',
+    createLabel: '+ Saisie multiple',
+    fields: [
+      { key: 'field_operation_date', label: 'Date opération', kind: 'date', required: true },
+      { key: 'field_person', label: 'Personne', kind: 'node', target: 'person', required: true },
+      { key: 'field_category', label: 'Catégorie', kind: 'term', vocabulary: 'category', required: true },
+      { key: 'field_caisse', label: 'Caisse', kind: 'term', vocabulary: 'caisse' },
+      { key: 'field_lot_lines', label: 'Lignes', kind: 'textarea' },
+      { key: 'field_lot_total', label: 'Total net', kind: 'money' },
+      { key: 'field_lot_operations', label: 'Opérations créées', kind: 'text' },
+    ],
+    steps: [],
+    columns: [],
+    filters: [],
+    dateFilterKey: 'field_operation_date',
+    sortField: 'nid',
+    sortOrder: 'DESC',
+    titleFrom: (v, ctx) => {
+      const person = v.field_person ? ctx.lookup('person', String(v.field_person))?.label ?? '' : ''
+      return [person, String(v.field_operation_date || '')].filter(Boolean).join(' — ') || 'Saisie multiple'
     },
   },
 }

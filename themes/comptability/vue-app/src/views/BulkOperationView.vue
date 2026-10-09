@@ -1,36 +1,46 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import FieldInput from '@/components/entity/FieldInput.vue'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
 import type { FormValue, FormValues } from '@/schema'
 import { BUNDLES, fieldDef } from '@/schema'
-import { duplicateMessage, saveEntity } from '@/services/entities'
+import { duplicateMessage, getEntity, removeEntity, saveEntity } from '@/services/entities'
 import { useLookupsStore } from '@/stores/lookups'
 import { useTermsStore } from '@/stores/terms'
 import { useUiStore } from '@/stores/ui'
 import BaseModal from '@/components/ui/BaseModal.vue'
-import { evaluate, isExpression } from '@/utils/calc'
+import { parseAmountLine } from '@/utils/bulkLines'
 import { extractErrorMessage, formatMoney, todayInput } from '@/utils/format'
 
-type LineStatus = 'ready' | 'saving' | 'ok' | 'duplicate' | 'error'
+/** new / update / same : à faire ; created / updated / duplicate / error : résultat du dernier envoi. */
+type LineStatus = 'new' | 'update' | 'same' | 'saving' | 'created' | 'updated' | 'duplicate' | 'error'
 
 interface Line {
   raw: string
-  /** Texte + rang parmi les lignes identiques : garde le statut quand on modifie la zone. */
-  key: string
+  /** Position parmi les lignes non vides : relie la ligne à son opération. */
+  index: number
   number: number
   amount: number
   label: string
   mouvement: 'Entree' | 'Sortie'
   error: string
-  status: LineStatus
-  message: string
-  id?: string
   /** Calcul saisi (« (1231+3344)/345 »), vide pour un simple nombre. */
   expression: string
   /** Résultat non entier, arrondi à l'ariary. */
   rounded: boolean
+}
+
+/** Valeurs d'une opération telles qu'enregistrées (stockées dans le lot, une par ligne). */
+interface Snapshot {
+  id: string
+  /** Montant signé (négatif = sortie). */
+  v: number
+  l: string
+  d: string
+  p: string
+  c: string
+  k: string
 }
 
 const def = BUNDLES.operation
@@ -52,63 +62,110 @@ const loading = ref(true)
 const saving = ref(false)
 const formError = ref('')
 
-/** Statuts déjà obtenus, par texte de ligne : une ligne enregistrée n'est jamais renvoyée. */
-const done = reactive<Record<string, Pick<Line, 'status' | 'message' | 'id'>>>({})
-
 /**
  * « -23616000 #she » => sortie de 23 616 000, libellé « she ».
  * « -4545+2343 #hto » => calculé : -2 202, donc sortie de 2 202.
  * Le signe du résultat donne le mouvement ; arrondi à l'ariary.
  */
-function parseLine(raw: string, number: number, key: string): Line {
-  const line: Line = {
-    raw, key, number, amount: 0, label: '', mouvement: 'Entree', error: '', status: 'ready', message: '',
-    expression: '', rounded: false,
+function parseLine(raw: string, number: number, index: number): Line {
+  const parsed = parseAmountLine(raw)
+  return {
+    raw,
+    index,
+    number,
+    amount: Math.abs(parsed.value),
+    label: parsed.label,
+    mouvement: parsed.value < 0 ? 'Sortie' : 'Entree',
+    error: parsed.error,
+    expression: parsed.expression ? parsed.amountPart : '',
+    rounded: parsed.rounded,
   }
-  const hash = raw.indexOf('#')
-  const amountPart = (hash >= 0 ? raw.slice(0, hash) : raw).trim()
-  line.label = hash >= 0 ? raw.slice(hash + 1).replace(/\s+/g, ' ').trim() : ''
-  if (!amountPart) {
-    line.error = 'Montant manquant'
-    return line
-  }
-
-  let result: number
-  try {
-    result = evaluate(amountPart)
-  } catch (err) {
-    line.error = `Montant illisible « ${amountPart} » : ${(err as Error).message}`
-    return line
-  }
-  const rounded = Math.round(result)
-  if (!rounded) {
-    line.error = `Montant nul (${amountPart} = ${result})`
-    return line
-  }
-  line.amount = Math.abs(rounded)
-  line.mouvement = rounded < 0 ? 'Sortie' : 'Entree'
-  line.expression = isExpression(amountPart) ? amountPart : ''
-  line.rounded = rounded !== result
-  const previous = done[key]
-  if (previous) Object.assign(line, previous)
-  return line
 }
 
-const lines = computed<Line[]>(() => {
-  const seen: Record<string, number> = {}
-  return text.value
+const lines = computed<Line[]>(() =>
+  text.value
     .split(/\r?\n/)
     .map((raw, i) => ({ raw: raw.trim(), number: i + 1 }))
     .filter((l) => l.raw !== '')
-    .map((l) => {
-      seen[l.raw] = (seen[l.raw] ?? 0) + 1
-      return parseLine(l.raw, l.number, `${seen[l.raw]}|${l.raw}`)
-    })
-})
+    .map((l, index) => parseLine(l.raw, l.number, index)),
+)
 
 const validLines = computed(() => lines.value.filter((l) => !l.error))
-const toSave = computed(() => validLines.value.filter((l) => l.status !== 'ok'))
 const invalidCount = computed(() => lines.value.length - validLines.value.length)
+
+/** Opération liée à chaque ligne, par position (null = pas encore créée). */
+const linked = ref<(Snapshot | null)[]>([])
+/** Résultat du dernier envoi, par position ; effacé dès que la saisie change. */
+const results = reactive<Record<number, { status: LineStatus; message: string }>>({})
+const live = reactive<Record<number, boolean>>({})
+
+const signedValue = (l: Line) => (l.mouvement === 'Sortie' ? -l.amount : l.amount)
+const snapshotOf = (l: Line, id: string): Snapshot => ({
+  id,
+  v: signedValue(l),
+  l: l.label,
+  d: String(shared.field_operation_date || ''),
+  p: String(shared.field_person || ''),
+  c: String(shared.field_category || ''),
+  k: String(shared.field_caisse || ''),
+})
+const sameAs = (l: Line, s: Snapshot) => {
+  const now = snapshotOf(l, s.id)
+  return now.v === s.v && now.l === s.l && now.d === s.d && now.p === s.p && now.c === s.c && now.k === s.k
+}
+
+/**
+ * Ligne → opération : d'abord même place et même contenu, puis même contenu
+ * ailleurs (ligne déplacée), puis même libellé (montant modifié), enfin même
+ * place (libellé modifié). Le reste : lignes nouvelles / opérations retirées.
+ */
+const assignment = computed(() => {
+  const pool = linked.value.filter((s): s is Snapshot => Boolean(s))
+  const used = new Set<string>()
+  const map: Record<number, Snapshot | null> = {}
+  const sameContent = (l: Line, s: Snapshot) => s.v === signedValue(l) && s.l === l.label
+  const take = (l: Line, s: Snapshot) => {
+    map[l.index] = s
+    used.add(s.id)
+  }
+  for (const l of validLines.value) {
+    const s = linked.value[l.index]
+    if (s && !used.has(s.id) && sameContent(l, s)) take(l, s)
+  }
+  for (const l of validLines.value) {
+    if (l.index in map) continue
+    const s = pool.find((p) => !used.has(p.id) && sameContent(l, p))
+    if (s) take(l, s)
+  }
+  for (const l of validLines.value) {
+    if (l.index in map) continue
+    const s = pool.find((p) => !used.has(p.id) && p.l === l.label)
+    if (s) take(l, s)
+  }
+  for (const l of validLines.value) {
+    if (l.index in map) continue
+    const s = linked.value[l.index]
+    if (s && !used.has(s.id)) take(l, s)
+    else map[l.index] = null
+  }
+  return { map, removed: pool.filter((p) => !used.has(p.id)) }
+})
+
+/** À faire pour chaque ligne : créer, modifier ou rien. */
+function planOf(l: Line): 'new' | 'update' | 'same' {
+  const op = assignment.value.map[l.index]
+  if (!op) return 'new'
+  return sameAs(l, op) ? 'same' : 'update'
+}
+const statusOf = (l: Line): LineStatus => (live[l.index] ? 'saving' : results[l.index]?.status ?? planOf(l))
+const messageOf = (l: Line) => results[l.index]?.message ?? ''
+const opIdOf = (l: Line) => assignment.value.map[l.index]?.id ?? ''
+
+const toCreate = computed(() => validLines.value.filter((l) => planOf(l) === 'new'))
+const toUpdate = computed(() => validLines.value.filter((l) => planOf(l) === 'update'))
+/** Opérations dont la ligne a été retirée de la zone. */
+const toRemove = computed(() => assignment.value.removed)
+const changeCount = computed(() => toCreate.value.length + toUpdate.value.length + toRemove.value.length)
 const totals = computed(() => {
   let entree = 0
   let sortie = 0
@@ -118,16 +175,80 @@ const totals = computed(() => {
   }
   return { entree, sortie, net: entree - sortie }
 })
-const savedCount = computed(() => lines.value.filter((l) => l.status === 'ok').length)
+const savedCount = computed(() => validLines.value.filter((l) => assignment.value.map[l.index]).length)
 
-// Lignes en cours d'enregistrement (statut affiché en direct).
-const live = reactive<Record<string, LineStatus>>({})
-const statusOf = (l: Line): LineStatus => live[l.key] ?? l.status
+function clearResults() {
+  for (const key of Object.keys(results)) delete results[Number(key)]
+}
+
+const route = useRoute()
+const router = useRouter()
+
+/** Lot en cours (chargé via « Charger » ou créé au premier enregistrement). */
+const lotId = ref('')
+
+async function loadLot(id: string) {
+  const lot = await getEntity('operation_lot', id)
+  if (!lot) {
+    ui.notify('error', `Saisie Ref-${id} introuvable.`)
+    return
+  }
+  lotId.value = lot.id
+  for (const key of SHARED) {
+    if (lot.values[key] !== '' && lot.values[key] != null) shared[key] = lot.values[key]
+  }
+  text.value = String(lot.values.field_lot_lines || '')
+  clearResults()
+
+  const stored = String(lot.values.field_lot_operations || '').trim()
+  if (stored.startsWith('[')) {
+    try {
+      linked.value = (JSON.parse(stored) as (Snapshot | null)[]).map((s) => (s && s.id ? { ...s, id: String(s.id) } : null))
+      return
+    } catch {
+      // Ancien format illisible : rapprochement ci-dessous.
+    }
+  }
+  await matchLegacyOperations(stored.split(',').filter(Boolean))
+}
+
+/**
+ * Lot enregistré avant le lien ligne ↔ opération (« 95,96,97 ») :
+ * rapprochement par montant, mouvement et libellé.
+ */
+async function matchLegacyOperations(ids: string[]) {
+  const ops = (await Promise.all(ids.map((id) => getEntity('operation', id).catch(() => null))))
+    .filter((op): op is NonNullable<typeof op> => Boolean(op))
+  const unmatched = [...ops]
+  const result: (Snapshot | null)[] = lines.value.map(() => null)
+  for (const line of lines.value) {
+    if (line.error) continue
+    const i = unmatched.findIndex(
+      (op) =>
+        Number(op.values.field_amount) === line.amount &&
+        String(op.values.field_mouvement_argent) === line.mouvement &&
+        (!line.label || op.title === line.label),
+    )
+    if (i < 0) continue
+    const op = unmatched.splice(i, 1)[0]
+    result[line.index] = {
+      id: op.id,
+      v: signedValue(line),
+      l: line.label,
+      d: String(op.values.field_operation_date || ''),
+      p: String(op.values.field_person || ''),
+      c: String(op.values.field_category || ''),
+      k: String(op.values.field_caisse || ''),
+    }
+  }
+  linked.value = result
+}
 
 async function init() {
   loading.value = true
   try {
     await Promise.all([terms.load('category'), terms.load('caisse'), lookups.load('person')])
+    if (route.query.lot) await loadLot(String(route.query.lot))
   } catch (err) {
     ui.notify('error', extractErrorMessage(err))
   } finally {
@@ -136,7 +257,24 @@ async function init() {
 }
 init()
 
-watch(text, () => (formError.value = ''))
+/** Enregistre (ou met à jour) le lot : lignes, champs communs, total et lien ligne ↔ opération. */
+async function saveLot() {
+  const values: FormValues = {
+    ...shared,
+    field_lot_lines: text.value.trim(),
+    field_lot_total: totals.value.net,
+    field_lot_operations: JSON.stringify(linked.value),
+  }
+  const id = await saveEntity('operation_lot', values, lookups.deriveContext(), lotId.value || undefined)
+  lotId.value = id
+  if (route.query.lot !== id) router.replace({ query: { ...route.query, lot: id } })
+  return id
+}
+
+watch(text, () => {
+  formError.value = ''
+  clearResults()
+})
 
 const tab = ref<'lines' | 'fields'>('lines')
 
@@ -170,20 +308,29 @@ const sharedSummary = computed(() => [
   { label: 'Catégorie', value: shared.field_category ? terms.label('category', String(shared.field_category)) : '—' },
   { label: 'Caisse', value: shared.field_caisse ? terms.label('caisse', String(shared.field_caisse)) : '—' },
 ])
-const pendingTotals = computed(() => {
-  let entree = 0
-  let sortie = 0
-  for (const l of toSave.value) {
-    if (l.mouvement === 'Sortie') sortie += l.amount
-    else entree += l.amount
-  }
-  return { entree, sortie, net: entree - sortie }
-})
+/** Totaux après enregistrement (toutes les lignes de la saisie). */
+const pendingTotals = totals
 
 function askConfirm() {
   formError.value = validate()
   if (formError.value || saving.value) return
+  if (!changeCount.value) {
+    formError.value = 'Aucune modification à enregistrer.'
+    return
+  }
   confirmOpen.value = true
+}
+
+function operationValues(line: Line): FormValues {
+  return {
+    ...shared,
+    field_mouvement_argent: line.mouvement,
+    field_amount: line.amount,
+    field_label: line.label,
+    field_operation_type: '',
+    field_method_payment: '',
+    field_image_prof: [],
+  }
 }
 
 async function saveAll() {
@@ -191,72 +338,104 @@ async function saveAll() {
   formError.value = validate()
   if (formError.value || saving.value) return
   saving.value = true
-  let ok = 0
-  let duplicates = 0
-  let errors = 0
+  clearResults()
+  const count = { created: 0, updated: 0, removed: 0, duplicates: 0, errors: 0 }
   const ctx = lookups.deriveContext()
+  const plan = assignment.value
+  const removed = [...toRemove.value]
+  // Résultat aligné sur les lignes : ce qui sera stocké dans le lot.
+  const next: (Snapshot | null)[] = lines.value.map((l) => plan.map[l.index] ?? null)
+
+  // Suppressions d'abord : une ligne modifiée peut reprendre le montant d'une ligne retirée.
+  const kept: Snapshot[] = []
+  for (const op of removed) {
+    try {
+      await removeEntity('operation', op.id)
+      count.removed++
+    } catch (err) {
+      kept.push(op)
+      count.errors++
+      ui.notify('error', `Opération ${op.id} non supprimée : ${extractErrorMessage(err)}`)
+    }
+  }
 
   // Une par une : la détection de doublons côté Drupal voit les lignes précédentes.
-  for (const line of toSave.value) {
-    live[line.key] = 'saving'
-    const values: FormValues = {
-      ...shared,
-      field_mouvement_argent: line.mouvement,
-      field_amount: line.amount,
-      field_label: line.label,
-      field_operation_type: '',
-      field_method_payment: '',
-      field_image_prof: [],
-    }
+  for (const line of validLines.value) {
+    if (planOf(line) === 'same') continue
+    const op = next[line.index]
+    live[line.index] = true
     try {
-      const id = await saveEntity('operation', values, ctx)
-      done[line.key] = { status: 'ok', message: '', id }
-      ok++
+      // La modification met aussi à jour le titre (libellé) et les champs communs.
+      const id = await saveEntity('operation', operationValues(line), ctx, op?.id)
+      next[line.index] = snapshotOf(line, id)
+      results[line.index] = { status: op ? 'updated' : 'created', message: '' }
+      op ? count.updated++ : count.created++
     } catch (err) {
       const dup = duplicateMessage(err)
-      done[line.key] = dup
+      results[line.index] = dup
         ? { status: 'duplicate', message: dup }
         : { status: 'error', message: extractErrorMessage(err) }
-      dup ? duplicates++ : errors++
+      dup ? count.duplicates++ : count.errors++
     } finally {
-      delete live[line.key]
+      delete live[line.index]
+    }
+  }
+
+  // Opérations non supprimées : gardées en fin de liste, réessayées au prochain envoi.
+  linked.value = [...next, ...kept]
+
+  const parts: string[] = []
+  if (count.created) parts.push(`${count.created} créée(s)`)
+  if (count.updated) parts.push(`${count.updated} modifiée(s)`)
+  if (count.removed) parts.push(`${count.removed} supprimée(s)`)
+  if (count.duplicates) parts.push(`${count.duplicates} doublon(s) refusé(s)`)
+  if (count.errors) parts.push(`${count.errors} erreur(s)`)
+  if (!parts.length) parts.push('aucune opération modifiée')
+
+  if (count.created || count.updated || count.removed || lotId.value) {
+    try {
+      parts.push(`saisie Ref-${await saveLot()} enregistrée`)
+    } catch (err) {
+      count.errors++
+      parts.push(`historique non enregistré (${extractErrorMessage(err)})`)
     }
   }
   saving.value = false
 
-  const parts = [`${ok} opération(s) créée(s)`]
-  if (duplicates) parts.push(`${duplicates} doublon(s) refusé(s)`)
-  if (errors) parts.push(`${errors} erreur(s)`)
-  ui.notify(errors || duplicates ? 'error' : 'success', parts.join(', ') + '.')
+  ui.notify(count.errors || count.duplicates ? 'error' : 'success', `Opérations : ${parts.join(', ')}.`)
 }
 
-/** Retire de la zone les lignes déjà enregistrées. */
-function clearSaved() {
-  const saved = new Set(lines.value.filter((l) => l.status === 'ok').map((l) => l.number))
-  text.value = text.value
-    .split(/\r?\n/)
-    .filter((_, i) => !saved.has(i + 1))
-    .join('\n')
-    .trim()
-  for (const key of Object.keys(done)) delete done[key]
+function newLot() {
+  lotId.value = ''
+  linked.value = []
+  text.value = ''
+  clearResults()
+  router.replace({ query: {} })
 }
 
 function onShared(key: string, value: FormValue) {
   shared[key] = value
   formError.value = ''
+  clearResults()
 }
 
 const STATUS_LABEL: Record<LineStatus, string> = {
-  ready: 'Prêt',
+  new: 'Nouveau',
+  update: 'À modifier',
+  same: 'Enregistré',
   saving: 'Envoi…',
-  ok: 'Créé',
+  created: 'Créé',
+  updated: 'Modifié',
   duplicate: 'Doublon',
   error: 'Erreur',
 }
 const STATUS_CLASS: Record<LineStatus, string> = {
-  ready: 'badge-muted',
+  new: 'badge-muted',
+  update: 'badge-warning',
+  same: 'badge-success',
   saving: 'badge-warning',
-  ok: 'badge-success',
+  created: 'badge-success',
+  updated: 'badge-success',
   duplicate: 'badge-warning',
   error: 'badge-accent',
 }
@@ -270,7 +449,19 @@ const STATUS_CLASS: Record<LineStatus, string> = {
         <span class="font-mono">montant #libellé</span>. Négatif = sortie, positif = entrée. Le montant peut être un
         calcul : <span class="font-mono">-4545+2343</span>, <span class="font-mono">(1231 + 3344)/345</span>.
       </p>
-      <RouterLink to="/operations" class="btn-secondary">← Opérations</RouterLink>
+      <div class="flex flex-wrap gap-2">
+        <RouterLink to="/operations" class="btn-secondary">← Opérations</RouterLink>
+        <RouterLink to="/operations/saisies" class="btn-secondary">Historique</RouterLink>
+      </div>
+    </div>
+
+    <div
+      v-if="lotId"
+      class="flex items-center justify-between gap-3 rounded-neu bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+      data-testid="bulk-lot"
+    >
+      <span>Saisie <strong>Ref-{{ lotId }}</strong>  : vos modifications mettront à jour ses opérations (création, modification, suppression).</span>
+      <button type="button" class="btn-ghost px-2 py-1 text-sm" :disabled="saving" @click="newLot">Nouvelle saisie</button>
     </div>
 
     <BaseSpinner v-if="loading" label="Chargement des listes" />
@@ -341,7 +532,15 @@ const STATUS_CLASS: Record<LineStatus, string> = {
       <div v-if="lines.length" v-show="tab === 'lines'" class="card p-3 sm:p-4" data-testid="bulk-preview">
         <p class="px-2 pb-2 text-sm text-neu-muted">
           {{ validLines.length }} ligne(s)<template v-if="invalidCount">, <span class="text-rose-600">{{ invalidCount }} illisible(s)</span></template>
-          <template v-if="savedCount"> · {{ savedCount }} créée(s)</template>
+          <template v-if="savedCount"> · {{ savedCount }} enregistrée(s)</template>
+        </p>
+        <p
+          v-if="toRemove.length"
+          class="mb-3 rounded-neu bg-amber-50 px-3 py-2 text-sm text-amber-800"
+          data-testid="bulk-remove-notice"
+        >
+          {{ toRemove.length }} opération(s) seront supprimées (ligne retirée) :
+          <span class="font-mono">{{ toRemove.map((s) => `${s.v < 0 ? '−' : '+'}${formatMoney(Math.abs(s.v))}${s.l ? ` #${s.l}` : ''}`).join(', ') }}</span>
         </p>
         <div class="mb-3 grid gap-2 sm:grid-cols-3" data-testid="bulk-totals">
           <div class="neu-inset flex items-baseline justify-between gap-3 rounded-neu px-3 py-2 sm:block">
@@ -383,7 +582,7 @@ const STATUS_CLASS: Record<LineStatus, string> = {
                 <span v-if="line.expression" class="block truncate font-mono text-xs text-neu-muted" data-testid="bulk-calc">
                   {{ line.expression }} = {{ line.mouvement === 'Sortie' ? '−' : '' }}{{ formatMoney(line.amount) }}<template v-if="line.rounded"> (arrondi)</template>
                 </span>
-                <span v-if="line.message" class="block text-xs text-amber-700">{{ line.message }}</span>
+                <span v-if="messageOf(line)" class="block text-xs text-amber-700">{{ messageOf(line) }}</span>
               </template>
             </span>
             <span
@@ -394,11 +593,12 @@ const STATUS_CLASS: Record<LineStatus, string> = {
               {{ line.mouvement === 'Sortie' ? '−' : '+' }}{{ formatMoney(line.amount) }}
             </span>
             <RouterLink
-              v-if="statusOf(line) === 'ok' && line.id"
-              :to="`/operations/${line.id}`"
-              class="badge badge-success shrink-0"
+              v-if="!line.error && opIdOf(line) && ['same', 'created', 'updated'].includes(statusOf(line))"
+              :to="`/operations/${opIdOf(line)}`"
+              class="badge shrink-0"
+              :class="STATUS_CLASS[statusOf(line)]"
             >
-              {{ STATUS_LABEL.ok }}
+              {{ STATUS_LABEL[statusOf(line)] }}
             </RouterLink>
             <span v-else-if="!line.error" class="badge shrink-0" :class="STATUS_CLASS[statusOf(line)]">
               {{ STATUS_LABEL[statusOf(line)] }}
@@ -414,23 +614,24 @@ const STATUS_CLASS: Record<LineStatus, string> = {
           type="button"
           class="btn-primary flex-1 sm:flex-none"
           data-testid="bulk-save"
-          :disabled="saving || !toSave.length"
+          :disabled="saving || !changeCount"
           @click="askConfirm"
         >
           <template v-if="saving">Enregistrement…</template>
-          <template v-else>Enregistrer {{ toSave.length }} opération(s)</template>
-        </button>
-        <button v-if="savedCount && !saving" type="button" class="btn-secondary" @click="clearSaved">
-          Retirer les lignes créées
+          <template v-else-if="!changeCount">Aucune modification</template>
+          <template v-else>Enregistrer {{ changeCount }} changement(s)</template>
         </button>
       </div>
     </template>
 
     <BaseModal :open="confirmOpen" title="Confirmer l'enregistrement" @close="confirmOpen = false">
       <div class="space-y-4" data-testid="bulk-confirm">
-        <p class="text-sm text-neu-muted">
-          {{ toSave.length }} opération(s) vont être créées avec :
-        </p>
+        <ul class="space-y-1 text-sm" data-testid="bulk-confirm-plan">
+          <li v-if="toCreate.length" class="flex justify-between"><span class="text-neu-muted">À créer</span><strong>{{ toCreate.length }}</strong></li>
+          <li v-if="toUpdate.length" class="flex justify-between"><span class="text-neu-muted">À modifier</span><strong class="text-amber-700">{{ toUpdate.length }}</strong></li>
+          <li v-if="toRemove.length" class="flex justify-between"><span class="text-neu-muted">À supprimer</span><strong class="text-rose-600">{{ toRemove.length }}</strong></li>
+        </ul>
+        <p class="text-sm text-neu-muted">Toutes les opérations de la saisie auront :</p>
         <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <template v-for="item in sharedSummary" :key="item.label">
             <dt class="font-semibold text-neu-muted">{{ item.label }}</dt>

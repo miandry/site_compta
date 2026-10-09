@@ -19,6 +19,7 @@ const nav = computed(() => [
     links: [
       { to: '/operations', label: 'Opérations', exact: true },
       { to: '/operations/saisie-multiple', label: 'Saisie multiple' },
+      { to: '/operations/saisies', label: 'Historique saisies' },
       { to: '/personnes', label: 'Personnes' },
       { to: '/evenements', label: 'Événements' },
     ],
