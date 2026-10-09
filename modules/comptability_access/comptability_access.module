@@ -5,8 +5,67 @@
  * Per-user scoping of api_solutions node results.
  */
 
+use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Database\Query\AlterableInterface;
+use Drupal\Core\Session\AccountInterface;
 use Drupal\node\NodeInterface;
+
+/**
+ * Bundles whose nodes are private to their author outside the API too.
+ */
+const COMPTABILITY_ACCESS_PRIVATE_BUNDLES = ['operation', 'operation_lot'];
+
+/**
+ * Whether $account sees every node of $bundle, not only its own.
+ */
+function comptability_access_sees_all(AccountInterface $account, string $bundle): bool {
+  return (int) $account->id() === 1
+    || in_array('administrator', $account->getRoles(), TRUE)
+    || $account->hasPermission('bypass node access')
+    || $account->hasPermission("edit any {$bundle} content");
+}
+
+/**
+ * Implements hook_node_access().
+ *
+ * Drupal pages (/node/{id}, revisions) for operations of other users.
+ */
+function comptability_access_node_access(NodeInterface $node, $op, AccountInterface $account) {
+  $bundle = $node->bundle();
+  if ($op !== 'view' || !in_array($bundle, COMPTABILITY_ACCESS_PRIVATE_BUNDLES, TRUE)) {
+    return AccessResult::neutral();
+  }
+  $own = $account->isAuthenticated() && (int) $node->getOwnerId() === (int) $account->id();
+  return AccessResult::forbiddenIf(!$own && !comptability_access_sees_all($account, $bundle))
+    ->cachePerPermissions()
+    ->cachePerUser()
+    ->addCacheableDependency($node);
+}
+
+/**
+ * Implements hook_query_TAG_alter() for node_access.
+ *
+ * Drupal listings (/admin/content, views): without node grants, hook_node_access
+ * is not applied to queries, so other users' operations are filtered here.
+ */
+function comptability_access_query_node_access_alter(AlterableInterface $query) {
+  $account = $query->getMetaData('account') ?: \Drupal::currentUser();
+  $hidden = array_values(array_filter(
+    COMPTABILITY_ACCESS_PRIVATE_BUNDLES,
+    fn ($bundle) => !comptability_access_sees_all($account, $bundle)
+  ));
+  if (!$hidden) {
+    return;
+  }
+  foreach ($query->getTables() as $alias => $table) {
+    if (($table['table'] ?? NULL) === 'node_field_data') {
+      $query->condition($query->orConditionGroup()
+        ->condition("$alias.type", $hidden, 'NOT IN')
+        ->condition("$alias.uid", (int) $account->id()));
+      return;
+    }
+  }
+}
 
 /**
  * Implements hook_ENTITY_TYPE_presave() for node.
