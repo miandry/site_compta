@@ -103,3 +103,17 @@ function comptabilty_update_9002() {
 
   return t("Content type « Lot d'opérations » créé.");
 }
+
+/**
+ * Enable comptability_access: users only see their own operations.
+ *
+ * Added as a dependency after comptabilty was installed, so existing sites
+ * never enabled it.
+ */
+function comptabilty_update_9003() {
+  if (\Drupal::moduleHandler()->moduleExists('comptability_access')) {
+    return t('comptability_access déjà activé.');
+  }
+  \Drupal::service('module_installer')->install(['comptability_access']);
+  return t('comptability_access activé : chaque utilisateur ne voit que ses opérations.');
+}

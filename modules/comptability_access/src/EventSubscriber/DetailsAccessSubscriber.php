@@ -31,10 +31,10 @@ class DetailsAccessSubscriber implements EventSubscriberInterface {
 
   public function onRequest(RequestEvent $event): void {
     $request = $event->getRequest();
-    if ($request->attributes->get('_route') !== 'api_solutions.api.v2.details' || $request->attributes->get('entitype') !== 'node') {
+    if (!preg_match('#^/api_solutions/api/v2/node/[a-z0-9_]+/(\d+)/?$#', $request->getPathInfo(), $m)) {
       return;
     }
-    $node = $this->entityTypeManager->getStorage('node')->load($request->attributes->get('id'));
+    $node = $this->entityTypeManager->getStorage('node')->load($m[1]);
     if ($node && $this->apiUser->canSeeAll($node->bundle())) {
       return;
     }

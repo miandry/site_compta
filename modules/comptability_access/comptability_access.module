@@ -93,8 +93,7 @@ function comptability_access_query_entity_query_node_alter(AlterableInterface $q
   if (!$api_user->isScopedRoute($route->getRouteName())) {
     return;
   }
-  $bundle = $route->getRawParameter('bundle');
-  if ($api_user->canSeeAll($bundle ? (string) $bundle : NULL)) {
+  if ($api_user->canSeeAll($api_user->requestedBundle())) {
     return;
   }
   $user = $api_user->get();

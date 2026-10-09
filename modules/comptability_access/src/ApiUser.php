@@ -60,7 +60,31 @@ class ApiUser {
    * True on the api_solutions routes whose node results must be scoped.
    */
   public function isScopedRoute(?string $route_name): bool {
-    return in_array($route_name, ['api_solutions.api.v2.list', 'api_solutions.api.v2.details', 'api_solutions.api.v1.list'], TRUE);
+    if (in_array($route_name, ['api_solutions.api.v2.list', 'api_solutions.api.v2.details', 'api_solutions.api.v1.list'], TRUE)) {
+      return TRUE;
+    }
+    // Other api_solutions versions name their routes differently.
+    $request = $this->requestStack->getCurrentRequest();
+    return $request && str_starts_with($request->getPathInfo(), '/api_solutions/api/');
+  }
+
+  /**
+   * Bundle requested on /api_solutions/api/v2/{entitype}/{bundle}[/{id}].
+   */
+  public function requestedBundle(): ?string {
+    $request = $this->requestStack->getCurrentRequest();
+    if (!$request) {
+      return NULL;
+    }
+    $bundle = $request->attributes->get('bundle');
+    if (is_string($bundle) && $bundle !== '') {
+      return $bundle;
+    }
+    if (preg_match('#^/api_solutions/api/v2/node/([a-z0-9_]+)#', $request->getPathInfo(), $m)) {
+      return $m[1];
+    }
+    $bundle = $request->query->get('bundle') ?? $request->query->get('type');
+    return is_string($bundle) && $bundle !== '' ? $bundle : NULL;
   }
 
   protected function resolve() {
