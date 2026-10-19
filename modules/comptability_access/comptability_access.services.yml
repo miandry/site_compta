@@ -2,6 +2,11 @@ services:
   comptability_access.api_user:
     class: Drupal\comptability_access\ApiUser
     arguments: ['@request_stack', '@current_user', '@api_solutions.api_crud']
+  comptability_access.list_filter_subscriber:
+    class: Drupal\comptability_access\EventSubscriber\ListFilterSubscriber
+    arguments: ['@comptability_access.api_user', '@database']
+    tags:
+      - { name: event_subscriber }
   comptability_access.details_subscriber:
     class: Drupal\comptability_access\EventSubscriber\DetailsAccessSubscriber
     arguments: ['@comptability_access.api_user', '@entity_type.manager']

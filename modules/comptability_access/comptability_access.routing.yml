@@ -1,0 +1,9 @@
+comptability_access.whoami:
+  path: '/comptability-access/whoami'
+  defaults:
+    _controller: '\Drupal\comptability_access\Controller\WhoAmIController::show'
+  methods: [GET]
+  requirements:
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE

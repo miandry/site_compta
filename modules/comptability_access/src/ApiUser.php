@@ -3,6 +3,7 @@
 namespace Drupal\comptability_access;
 
 use Drupal\Core\Session\AccountInterface;
+use Drupal\user\Entity\Role;
 use Drupal\user\Entity\User;
 use Symfony\Component\HttpFoundation\RequestStack;
 
@@ -14,6 +15,11 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * \Drupal::currentUser() is anonymous for most API calls.
  */
 class ApiUser {
+
+  /**
+   * Bundles only administrators see in full; everyone else sees their own.
+   */
+  public const PRIVATE_BUNDLES = ['operation', 'operation_lot'];
 
   protected RequestStack $requestStack;
 
@@ -42,18 +48,36 @@ class ApiUser {
 
   public function isAdmin(): bool {
     $user = $this->get();
-    return $user && ((int) $user->id() === 1 || in_array('administrator', $user->getRoles(), TRUE));
+    return $user && static::isAdminAccount($user);
+  }
+
+  /**
+   * Only administrators see the nodes of other users.
+   */
+  public static function isAdminAccount(AccountInterface $account): bool {
+    if ((int) $account->id() === 1) {
+      return TRUE;
+    }
+    foreach (Role::loadMultiple($account->getRoles(TRUE)) as $role) {
+      if ($role->id() === 'administrator' || $role->isAdmin()) {
+        return TRUE;
+      }
+    }
+    return FALSE;
   }
 
   /**
    * Whether the caller sees every node of $bundle, not only their own.
    */
-  public function canSeeAll(?string $bundle): bool {
+  public function canSeeAll(?string $bundle = NULL): bool {
     if ($this->isAdmin()) {
       return TRUE;
     }
+    if (!$bundle || in_array($bundle, static::PRIVATE_BUNDLES, TRUE)) {
+      return FALSE;
+    }
     $user = $this->get();
-    return $user && $bundle && $user->hasPermission("edit any {$bundle} content");
+    return $user && $user->hasPermission("edit any {$bundle} content");
   }
 
   /**
@@ -64,8 +88,15 @@ class ApiUser {
       return TRUE;
     }
     // Other api_solutions versions name their routes differently.
+    return $this->isApiRequest();
+  }
+
+  /**
+   * Any /api_solutions/api/ request (also behind a language prefix).
+   */
+  public function isApiRequest(): bool {
     $request = $this->requestStack->getCurrentRequest();
-    return $request && str_starts_with($request->getPathInfo(), '/api_solutions/api/');
+    return $request && str_contains($request->getPathInfo(), '/api_solutions/api/');
   }
 
   /**
@@ -80,7 +111,7 @@ class ApiUser {
     if (is_string($bundle) && $bundle !== '') {
       return $bundle;
     }
-    if (preg_match('#^/api_solutions/api/v2/node/([a-z0-9_]+)#', $request->getPathInfo(), $m)) {
+    if (preg_match('#/api_solutions/api/v2/node/([a-z0-9_]+)#', $request->getPathInfo(), $m)) {
       return $m[1];
     }
     $bundle = $request->query->get('bundle') ?? $request->query->get('type');

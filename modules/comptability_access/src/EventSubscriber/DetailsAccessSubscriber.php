@@ -31,7 +31,7 @@ class DetailsAccessSubscriber implements EventSubscriberInterface {
 
   public function onRequest(RequestEvent $event): void {
     $request = $event->getRequest();
-    if (!preg_match('#^/api_solutions/api/v2/node/[a-z0-9_]+/(\d+)/?$#', $request->getPathInfo(), $m)) {
+    if (!preg_match('#/api_solutions/api/v2/node/[a-z0-9_]+/(\d+)/?$#', $request->getPathInfo(), $m)) {
       return;
     }
     $node = $this->entityTypeManager->getStorage('node')->load($m[1]);
