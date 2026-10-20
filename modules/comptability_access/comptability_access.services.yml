@@ -7,8 +7,8 @@ services:
     arguments: ['@comptability_access.api_user', '@database']
     tags:
       - { name: event_subscriber }
-  comptability_access.person_save_subscriber:
-    class: Drupal\comptability_access\EventSubscriber\PersonSaveSubscriber
+  comptability_access.content_editor_save_subscriber:
+    class: Drupal\comptability_access\EventSubscriber\ContentEditorSaveSubscriber
     arguments: ['@comptability_access.api_user']
     tags:
       - { name: event_subscriber }

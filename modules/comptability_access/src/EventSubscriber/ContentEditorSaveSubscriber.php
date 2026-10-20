@@ -10,13 +10,22 @@ use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
- * Lets content_editor create/edit personnes when api_solutions would refuse.
+ * Lets content_editor save personnes / opérations when Drupal perms lag.
  *
- * On production the role often lacks « create person content » in the permission
- * cache, so api_solutions returns « pas la permission de creer … (person) ».
- * We grant the perms and perform the save before that check runs.
+ * api_solutions refuses with « pas la permission de creer … » when the role
+ * lacks the matching create/edit permission. We grant the perms and perform
+ * the save before that check runs.
  */
-class PersonSaveSubscriber implements EventSubscriberInterface {
+class ContentEditorSaveSubscriber implements EventSubscriberInterface {
+
+  /**
+   * Bundles content_editor may save, and whether they may edit any or only own.
+   */
+  protected const BUNDLES = [
+    'person' => 'any',
+    'operation' => 'own',
+    'operation_lot' => 'own',
+  ];
 
   protected ApiUser $apiUser;
 
@@ -25,7 +34,6 @@ class PersonSaveSubscriber implements EventSubscriberInterface {
   }
 
   public static function getSubscribedEvents(): array {
-    // After routing (32), before the controller.
     return [KernelEvents::REQUEST => ['onRequest', 28]];
   }
 
@@ -35,7 +43,11 @@ class PersonSaveSubscriber implements EventSubscriberInterface {
       return;
     }
     $content = json_decode((string) $request->getContent(), TRUE);
-    if (!is_array($content) || ($content['entity_type'] ?? '') !== 'node' || ($content['bundle'] ?? '') !== 'person') {
+    if (!is_array($content) || ($content['entity_type'] ?? '') !== 'node') {
+      return;
+    }
+    $bundle = $content['bundle'] ?? '';
+    if (!isset(self::BUNDLES[$bundle])) {
       return;
     }
 
@@ -44,12 +56,23 @@ class PersonSaveSubscriber implements EventSubscriberInterface {
       return;
     }
 
-    $this->ensurePersonPermissions();
+    $this->ensurePermissions();
+
+    $is_update = isset($content['nid']) && is_numeric($content['nid']);
+    if ($is_update && self::BUNDLES[$bundle] === 'own') {
+      $node = \Drupal::entityTypeManager()->getStorage('node')->load($content['nid']);
+      if (!$node || (int) $node->getOwnerId() !== (int) $user->id()) {
+        $event->setResponse(new JsonResponse([
+          'message' => "Vous ne pouvez modifier que vos propres contenus ({$bundle})",
+          'status' => 'error',
+        ], 403));
+        return;
+      }
+    }
 
     if (!isset($content['uid'])) {
       $content['uid'] = $user->id();
     }
-    $bundle = $content['bundle'];
     unset($content['bundle'], $content['entity_type'], $content['token'], $content['author']);
 
     try {
@@ -65,22 +88,27 @@ class PersonSaveSubscriber implements EventSubscriberInterface {
     }
   }
 
-  protected function ensurePersonPermissions(): void {
+  protected function ensurePermissions(): void {
     $role = Role::load('content_editor');
     if (!$role) {
       return;
     }
     $changed = FALSE;
-    foreach ([
-      'create person content',
-      'edit own person content',
-      'edit any person content',
-      'delete own person content',
-      'delete any person content',
-    ] as $permission) {
-      if (!$role->hasPermission($permission)) {
-        $role->grantPermission($permission);
-        $changed = TRUE;
+    foreach (self::BUNDLES as $bundle => $scope) {
+      $perms = [
+        "create {$bundle} content",
+        "edit own {$bundle} content",
+        "delete own {$bundle} content",
+      ];
+      if ($scope === 'any') {
+        $perms[] = "edit any {$bundle} content";
+        $perms[] = "delete any {$bundle} content";
+      }
+      foreach ($perms as $permission) {
+        if (!$role->hasPermission($permission)) {
+          $role->grantPermission($permission);
+          $changed = TRUE;
+        }
       }
     }
     if ($changed) {

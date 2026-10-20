@@ -133,9 +133,23 @@ function comptabilty_update_9005() {
 }
 
 /**
- * Grants content_editor full person create / edit / delete.
+ * Content editors may create their own operations and lots.
+ */
+function comptabilty_update_9006() {
+  return _comptabilty_grant_editor_content_perms();
+}
+
+/**
+ * Grants content_editor person (all) + operation / lot (own) permissions.
  */
 function _comptabilty_grant_person_to_content_editor() {
+  return _comptabilty_grant_editor_content_perms();
+}
+
+/**
+ * Grants content_editor person (all) + operation / lot (own) permissions.
+ */
+function _comptabilty_grant_editor_content_perms() {
   $role = \Drupal\user\Entity\Role::load('content_editor');
   if (!$role) {
     return t('Rôle content_editor introuvable.');
@@ -146,14 +160,19 @@ function _comptabilty_grant_person_to_content_editor() {
     'edit any person content',
     'delete own person content',
     'delete any person content',
+    'create operation content',
+    'edit own operation content',
+    'delete own operation content',
+    'create operation_lot content',
+    'edit own operation_lot content',
+    'delete own operation_lot content',
   ] as $permission) {
     $role->grantPermission($permission);
   }
   $role->save();
-  // Drop stale permission caches so hasPermission() sees the grants immediately.
   \Drupal::service('cache.static')->deleteAll();
   if (\Drupal::moduleHandler()->moduleExists('user')) {
     \Drupal::entityTypeManager()->getStorage('user_role')->resetCache(['content_editor']);
   }
-  return t('content_editor : création et accès à toutes les personnes.');
+  return t('content_editor : personnes (toutes) + opérations / lots (les siennes).');
 }
