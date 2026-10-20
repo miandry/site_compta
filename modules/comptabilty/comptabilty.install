@@ -122,6 +122,20 @@ function comptabilty_update_9003() {
  * Content editors may create persons and see the full person directory.
  */
 function comptabilty_update_9004() {
+  return _comptabilty_grant_person_to_content_editor();
+}
+
+/**
+ * Re-apply person permissions for content_editor (prod may have missed 9004).
+ */
+function comptabilty_update_9005() {
+  return _comptabilty_grant_person_to_content_editor();
+}
+
+/**
+ * Grants content_editor full person create / edit / delete.
+ */
+function _comptabilty_grant_person_to_content_editor() {
   $role = \Drupal\user\Entity\Role::load('content_editor');
   if (!$role) {
     return t('Rôle content_editor introuvable.');
@@ -136,5 +150,10 @@ function comptabilty_update_9004() {
     $role->grantPermission($permission);
   }
   $role->save();
+  // Drop stale permission caches so hasPermission() sees the grants immediately.
+  \Drupal::service('cache.static')->deleteAll();
+  if (\Drupal::moduleHandler()->moduleExists('user')) {
+    \Drupal::entityTypeManager()->getStorage('user_role')->resetCache(['content_editor']);
+  }
   return t('content_editor : création et accès à toutes les personnes.');
 }
