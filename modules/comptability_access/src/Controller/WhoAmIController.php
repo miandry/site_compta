@@ -15,7 +15,7 @@ class WhoAmIController extends ControllerBase {
     $api_user = \Drupal::service('comptability_access.api_user');
     $user = $api_user->get();
     $scope = [];
-    foreach (ApiUser::PRIVATE_BUNDLES as $bundle) {
+    foreach (array_merge(ApiUser::PRIVATE_BUNDLES, ApiUser::SHARED_BUNDLES) as $bundle) {
       $scope[$bundle] = $api_user->canSeeAll($bundle) ? 'all' : 'own';
     }
     return new JsonResponse([

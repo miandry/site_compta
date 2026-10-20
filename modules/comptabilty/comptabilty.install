@@ -117,3 +117,24 @@ function comptabilty_update_9003() {
   \Drupal::service('module_installer')->install(['comptability_access']);
   return t('comptability_access activé : chaque utilisateur ne voit que ses opérations.');
 }
+
+/**
+ * Content editors may create persons and see the full person directory.
+ */
+function comptabilty_update_9004() {
+  $role = \Drupal\user\Entity\Role::load('content_editor');
+  if (!$role) {
+    return t('Rôle content_editor introuvable.');
+  }
+  foreach ([
+    'create person content',
+    'edit own person content',
+    'edit any person content',
+    'delete own person content',
+    'delete any person content',
+  ] as $permission) {
+    $role->grantPermission($permission);
+  }
+  $role->save();
+  return t('content_editor : création et accès à toutes les personnes.');
+}

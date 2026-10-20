@@ -21,6 +21,11 @@ class ApiUser {
    */
   public const PRIVATE_BUNDLES = ['operation', 'operation_lot'];
 
+  /**
+   * Bundles content editors may list and open in full (not only their own).
+   */
+  public const SHARED_BUNDLES = ['person'];
+
   protected RequestStack $requestStack;
 
   protected AccountInterface $currentUser;
@@ -77,7 +82,22 @@ class ApiUser {
       return FALSE;
     }
     $user = $this->get();
-    return $user && $user->hasPermission("edit any {$bundle} content");
+    if (!$user) {
+      return FALSE;
+    }
+    // Personnes: content editors see and use the full directory.
+    if (in_array($bundle, static::SHARED_BUNDLES, TRUE)
+      && in_array('content_editor', $user->getRoles(), TRUE)) {
+      return TRUE;
+    }
+    return $user->hasPermission("edit any {$bundle} content");
+  }
+
+  /**
+   * Whether this API list/detail must be limited to the caller's own nodes.
+   */
+  public function mustScopeToOwner(?string $bundle = NULL): bool {
+    return $bundle && in_array($bundle, static::PRIVATE_BUNDLES, TRUE) && !$this->canSeeAll($bundle);
   }
 
   /**

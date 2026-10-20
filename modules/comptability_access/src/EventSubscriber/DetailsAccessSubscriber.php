@@ -35,7 +35,8 @@ class DetailsAccessSubscriber implements EventSubscriberInterface {
       return;
     }
     $node = $this->entityTypeManager->getStorage('node')->load($m[1]);
-    if ($node && $this->apiUser->canSeeAll($node->bundle())) {
+    // Only operations / lots are private; personnes and other bundles stay open.
+    if (!$node || !$this->apiUser->mustScopeToOwner($node->bundle())) {
       return;
     }
     $user = $this->apiUser->get();

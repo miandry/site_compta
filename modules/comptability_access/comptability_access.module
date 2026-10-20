@@ -91,7 +91,8 @@ function comptability_access_query_entity_query_node_alter(AlterableInterface $q
   if (!$api_user->isScopedRoute($route->getRouteName())) {
     return;
   }
-  if ($api_user->canSeeAll($api_user->requestedBundle())) {
+  // Only operations / lots are private. Personnes stay shared for editors.
+  if (!$api_user->mustScopeToOwner($api_user->requestedBundle())) {
     return;
   }
   $user = $api_user->get();
