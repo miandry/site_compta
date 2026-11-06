@@ -55,16 +55,7 @@ const editing = ref<EntityRecord | null>(null)
 const submitting = ref(false)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
-/** Total de la page ; net (entrées − sorties) quand le bundle a un sens. */
-const pageSum = computed(() => {
-  const key = moneyColumn.value?.key
-  if (!key) return 0
-  return items.value.reduce((sum, r) => sum + (sign(def.value, r) || 1) * (Number(r.values[key]) || 0), 0)
-})
-const pageSumTone = computed(() =>
-  !def.value.directionKey ? 'text-neu-dark' : pageSum.value < 0 ? 'text-rose-600' : 'text-emerald-700',
-)
-const pageSumLabel = computed(() => (def.value.directionKey ? 'Solde (page)' : 'Total (page)'))
+const filteredSumLabel = computed(() => (def.value.directionKey ? 'Solde' : 'Total'))
 
 function filterChoices(field: FieldDef) {
   if (field.kind === 'options') {
@@ -107,11 +98,11 @@ function query(pageIndex: number, limit: number | 'all' = PAGE_SIZE, fields?: st
 
 /** `silent` : rafraîchit sans spinner (après un enregistrement) pour garder la liste et le scroll. */
 let refreshSeq = 0
-async function refresh(silent = false) {
+async function refresh(silent = false, withSum = true) {
   const seq = ++refreshSeq
   if (!silent) loading.value = true
   error.value = ''
-  loadFilteredSum(seq)
+  if (withSum) loadFilteredSum()
   try {
     const result = await query(page.value)
     if (seq !== refreshSeq) return
@@ -139,19 +130,19 @@ const filteredSumTone = computed(() =>
   !def.value.directionKey ? 'text-neu-dark' : (filteredSum.value ?? 0) < 0 ? 'text-rose-600' : 'text-emerald-700',
 )
 
-async function loadFilteredSum(seq: number) {
+let sumSeq = 0
+async function loadFilteredSum() {
+  const seq = ++sumSeq
   const key = moneyColumn.value?.key
-  if (!key) {
-    filteredSum.value = null
-    return
-  }
+  filteredSum.value = null
+  if (!key) return
   const fields = ['nid', key, ...(def.value.directionKey ? [def.value.directionKey] : [])]
   try {
     const { items: all } = await query(1, 'all', fields)
-    if (seq !== refreshSeq) return
+    if (seq !== sumSeq) return
     filteredSum.value = all.reduce((sum, r) => sum + (sign(def.value, r) || 1) * (Number(r.values[key]) || 0), 0)
   } catch {
-    if (seq === refreshSeq) filteredSum.value = null
+    if (seq === sumSeq) filteredSum.value = null
   }
 }
 
@@ -227,7 +218,7 @@ function resetFilters() {
 
 function goPage(next: number) {
   page.value = next
-  refresh()
+  refresh(false, false)
 }
 
 function openCreate() {
@@ -418,9 +409,10 @@ async function onDelete(record: EntityRecord) {
     <div v-if="!loading && !error" class="card p-3 sm:p-4" :class="{ 'hidden md:block': def.mobile }">
       <div class="flex flex-wrap items-center justify-between gap-2 px-2 pb-1">
         <p class="text-sm text-neu-muted">{{ total }} élément(s)</p>
-        <p v-if="moneyColumn && items.length" class="text-sm text-neu-muted">
-          {{ pageSumLabel }} :
-          <span class="font-mono font-semibold" :class="pageSumTone">{{ formatMoney(pageSum) }}</span>
+        <p v-if="moneyColumn && total" class="text-sm text-neu-muted" data-testid="list-filtered-sum">
+          {{ filteredSumLabel }}<template v-if="activeFilterCount || search"> (filtre)</template> :
+          <span v-if="filteredSum !== null" class="font-mono font-semibold" :class="filteredSumTone">{{ formatMoney(filteredSum) }}</span>
+          <span v-else class="font-mono">…</span>
         </p>
       </div>
 
