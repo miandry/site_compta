@@ -66,6 +66,7 @@ class ContentEditorSaveSubscriber implements EventSubscriberInterface {
           'message' => "Vous ne pouvez modifier que vos propres contenus ({$bundle})",
           'status' => 'error',
         ], 403));
+        $event->stopPropagation();
         return;
       }
     }
@@ -79,12 +80,15 @@ class ContentEditorSaveSubscriber implements EventSubscriberInterface {
       $entity = \Drupal::service('api_solutions.crud')->save('node', $bundle, $content);
       if (is_object($entity)) {
         $event->setResponse(new JsonResponse(['item' => $entity->id(), 'status' => TRUE]));
+        $event->stopPropagation();
         return;
       }
       $event->setResponse(new JsonResponse(['message' => 'Erreur lors de la sauvegarde', 'status' => 'error'], 500));
+      $event->stopPropagation();
     }
     catch (\Throwable $e) {
       $event->setResponse(new JsonResponse(['message' => $e->getMessage(), 'status' => 'error'], 500));
+      $event->stopPropagation();
     }
   }
 

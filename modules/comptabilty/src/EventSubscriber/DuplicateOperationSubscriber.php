@@ -11,10 +11,10 @@ use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
- * Refuses /api_solutions/save of an operation identical to an existing one.
+ * Refuses /api_solutions/save when every compared field matches an existing op.
  *
- * Identical = same amount, caisse, category, movement and justificatif image
- * name, among the operations the caller can see.
+ * Compared: title (libellé), amount, date, person, caisse, category, movement,
+ * justificatif image name — among the operations the caller can see.
  */
 class DuplicateOperationSubscriber implements EventSubscriberInterface {
 
@@ -26,8 +26,7 @@ class DuplicateOperationSubscriber implements EventSubscriberInterface {
   ) {}
 
   public static function getSubscribedEvents(): array {
-    // After routing (32) so the route name is available.
-    return [KernelEvents::REQUEST => ['onRequest', 20]];
+    return [KernelEvents::REQUEST => ['onRequest', 31]];
   }
 
   public function onRequest(RequestEvent $event): void {
@@ -39,7 +38,6 @@ class DuplicateOperationSubscriber implements EventSubscriberInterface {
     if (!is_array($content) || ($content['entity_type'] ?? '') !== 'node' || ($content['bundle'] ?? '') !== self::BUNDLE) {
       return;
     }
-    // Soft delete / partial updates carry no amount: nothing to compare.
     if (!isset($content['field_amount']) || (isset($content['status']) && (int) $content['status'] === 0)) {
       return;
     }
@@ -51,10 +49,11 @@ class DuplicateOperationSubscriber implements EventSubscriberInterface {
         'code' => 'duplicate',
         'duplicate' => ['id' => (int) $duplicate->id(), 'title' => $duplicate->label()],
         'message' => sprintf(
-          'Doublon : l\'opération « %s » a déjà le même montant, caisse, catégorie, mouvement et justificatif.',
+          'Doublon : l\'opération « %s » a déjà les mêmes champs (libellé, montant, date, personne, caisse, catégorie, mouvement, justificatif).',
           $duplicate->label()
         ),
       ], 409));
+      $event->stopPropagation();
     }
   }
 
@@ -69,7 +68,11 @@ class DuplicateOperationSubscriber implements EventSubscriberInterface {
       ->condition('status', 1)
       ->condition('field_amount', (int) round((float) $content['field_amount']));
 
-    foreach (['field_caisse', 'field_category', 'field_mouvement_argent'] as $field) {
+    $title = trim((string) ($content['title'] ?? ''));
+    if ($title !== '') {
+      $query->condition('title', $title);
+    }
+    foreach (['field_caisse', 'field_category', 'field_mouvement_argent', 'field_person'] as $field) {
       $value = $this->scalar($content[$field] ?? NULL);
       if ($value === '') {
         $query->notExists($field);
@@ -78,9 +81,14 @@ class DuplicateOperationSubscriber implements EventSubscriberInterface {
         $query->condition($field, $value);
       }
     }
+    $date = $this->operationDate($content['field_operation_date'] ?? NULL);
+    if ($date !== '') {
+      $query->condition('field_operation_date', $date, 'STARTS_WITH');
+    }
     if ($excludeNid) {
       $query->condition('nid', $excludeNid, '<>');
     }
+    // Always own-only for non-admins: never block on another user's operation.
     if (!$this->apiUser->canSeeAll(self::BUNDLE)) {
       $user = $this->apiUser->get();
       $query->condition('uid', $user ? (int) $user->id() : -1);
@@ -105,6 +113,20 @@ class DuplicateOperationSubscriber implements EventSubscriberInterface {
       $value = $value['target_id'] ?? $value['value'] ?? reset($value);
     }
     return $value === NULL || $value === FALSE ? '' : trim((string) $value);
+  }
+
+  /**
+   * YYYY-MM-DD from a Drupal datetime payload ("2026-10-20" or "…T00:00:00").
+   */
+  protected function operationDate(mixed $value): string {
+    $raw = $this->scalar($value);
+    if ($raw === '') {
+      return '';
+    }
+    if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $raw, $m)) {
+      return $m[1];
+    }
+    return $raw;
   }
 
   /**
