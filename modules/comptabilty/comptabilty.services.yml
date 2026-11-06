@@ -2,6 +2,13 @@ services:
   comptabilty.manager:
     class: Drupal\comptabilty\ComptabiltyManager
     arguments: ['@entity_type.manager', '@current_user']
+  comptabilty.admin_create_notifier:
+    class: Drupal\comptabilty\Service\AdminCreateNotifier
+    arguments:
+      - '@config.factory'
+      - '@plugin.manager.mail'
+      - '@language_manager'
+      - '@logger.factory'
   comptabilty.duplicate_operation_subscriber:
     class: Drupal\comptabilty\EventSubscriber\DuplicateOperationSubscriber
     arguments: ['@comptability_access.api_user', '@entity_type.manager']

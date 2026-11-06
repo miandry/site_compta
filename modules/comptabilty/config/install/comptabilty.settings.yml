@@ -1,0 +1,5 @@
+notify_admin_on_create: true
+admin_notify_email: ''
+notify_bundles:
+  - operation
+  - operation_lot

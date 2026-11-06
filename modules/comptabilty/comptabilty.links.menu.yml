@@ -1,0 +1,6 @@
+comptabilty.notify_settings:
+  title: 'Notifications comptabilité'
+  description: 'Email à l’admin lors d’une création par un non-admin.'
+  parent: system.admin_config_system
+  route_name: comptabilty.notify_settings
+  weight: 50

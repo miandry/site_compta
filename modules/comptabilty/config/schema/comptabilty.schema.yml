@@ -1,0 +1,15 @@
+comptabilty.settings:
+  type: config_object
+  label: 'Comptabilty settings'
+  mapping:
+    notify_admin_on_create:
+      type: boolean
+      label: 'Email admin when a non-admin creates content'
+    admin_notify_email:
+      type: email
+      label: 'Admin notification email (empty = site mail)'
+    notify_bundles:
+      type: sequence
+      label: 'Bundles that trigger a notification'
+      sequence:
+        type: string

@@ -28,3 +28,48 @@ function comptabilty_node_presave(NodeInterface $node) {
     \Drupal::service('comptabilty.manager')->prepareOperationRevision($node);
   }
 }
+
+/**
+ * Implements hook_ENTITY_TYPE_insert() for node.
+ *
+ * Non-admin creates → email the site admin.
+ */
+function comptabilty_node_insert(NodeInterface $node) {
+  \Drupal::service('comptabilty.admin_create_notifier')->notifyIfNeeded($node);
+}
+
+/**
+ * Implements hook_mail().
+ */
+function comptabilty_mail($key, &$message, $params) {
+  if ($key !== 'admin_create') {
+    return;
+  }
+  /** @var \Drupal\node\NodeInterface $node */
+  $node = $params['node'];
+  /** @var \Drupal\user\UserInterface $author */
+  $author = $params['author'];
+  $type = $node->bundle() === 'operation_lot' ? "saisie multiple" : 'opération';
+
+  $message['subject'] = t('Nouvelle @type : @title', [
+    '@type' => $type,
+    '@title' => $node->label(),
+  ]);
+
+  $lines = [
+    t('Un utilisateur non administrateur vient de créer une @type.', ['@type' => $type]),
+    '',
+  ];
+  foreach ($params['summary'] as $label => $value) {
+    $lines[] = $label . ' : ' . $value;
+  }
+  $lines[] = '';
+  $lines[] = t('Lien : @url', ['@url' => $params['link']]);
+  $lines[] = '';
+  $lines[] = t('Compte : @name (@mail)', [
+    '@name' => $author->getAccountName(),
+    '@mail' => $author->getEmail() ?: '—',
+  ]);
+
+  $message['body'][] = implode("\n", $lines);
+}

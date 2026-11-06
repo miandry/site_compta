@@ -11,3 +11,11 @@ comptabilty.operation_history:
     parameters:
       node:
         type: entity:node
+
+comptabilty.notify_settings:
+  path: '/admin/config/comptabilty/notifications'
+  defaults:
+    _form: '\Drupal\comptabilty\Form\NotifySettingsForm'
+    _title: 'Notifications admin'
+  requirements:
+    _permission: 'administer site configuration'

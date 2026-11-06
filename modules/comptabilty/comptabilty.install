@@ -176,3 +176,18 @@ function _comptabilty_grant_editor_content_perms() {
   }
   return t('content_editor : personnes (toutes) + opérations / lots (les siennes).');
 }
+
+/**
+ * Default settings: email admin when a non-admin creates an operation.
+ */
+function comptabilty_update_9007() {
+  $config = \Drupal::configFactory()->getEditable('comptabilty.settings');
+  if ($config->isNew() || $config->get('notify_admin_on_create') === NULL) {
+    $config
+      ->set('notify_admin_on_create', TRUE)
+      ->set('admin_notify_email', '')
+      ->set('notify_bundles', ['operation', 'operation_lot'])
+      ->save();
+  }
+  return t('Notifications admin activées (email du site).');
+}

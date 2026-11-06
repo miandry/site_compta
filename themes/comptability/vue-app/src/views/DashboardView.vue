@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
+import DashboardCharts from '@/components/ui/DashboardCharts.vue'
 import { useDisplay } from '@/composables/useDisplay'
 import type { Vocabulary } from '@/schema'
 import { BUNDLES } from '@/schema'
@@ -82,6 +83,46 @@ const debitsByCategory = computed(() => {
   return rows.map((r) => ({ ...r, pct: Math.round((r.total / max) * 100) }))
 })
 
+const creditsByCategory = computed(() => {
+  const map = new Map<string, number>()
+  for (const r of credits.value) {
+    const id = String(r.values.field_category || '')
+    map.set(id, (map.get(id) ?? 0) + amount(r))
+  }
+  return [...map.entries()]
+    .map(([id, total]) => ({ label: (id && terms.label('category', id)) || 'Sans catégorie', total }))
+    .sort((a, b) => b.total - a.total)
+})
+
+const MONTH_LABELS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+
+/** 12 derniers mois (y compris le mois courant) : entrées / sorties. */
+const byMonth = computed(() => {
+  const now = new Date()
+  const months: { key: string; label: string; entree: number; sortie: number }[] = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    months.push({
+      key,
+      label: `${MONTH_LABELS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`,
+      entree: 0,
+      sortie: 0,
+    })
+  }
+  const index = new Map(months.map((m, i) => [m.key, i]))
+  for (const r of operations.value) {
+    const raw = String(r.values.field_operation_date || '')
+    const m = raw.match(/^(\d{4}-\d{2})/)
+    if (!m) continue
+    const i = index.get(m[1])
+    if (i === undefined) continue
+    if (sign(def, r) > 0) months[i].entree += amount(r)
+    else if (sign(def, r) < 0) months[i].sortie += amount(r)
+  }
+  return months
+})
+
 const labelOf = (r: EntityRecord) => String(r.values.field_label || r.title)
 const personOf = (r: EntityRecord) =>
   lookups.find('person', String(r.values.field_person))?.label || r.labels.field_person || '—'
@@ -102,6 +143,8 @@ const personOf = (r: EntityRecord) =>
           <p class="mt-1 text-xs text-neu-muted">{{ stat.hint }}</p>
         </article>
       </section>
+
+      <DashboardCharts :by-month="byMonth" :credits-by-category="creditsByCategory" />
 
       <div class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <section class="card p-5">
