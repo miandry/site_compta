@@ -21,7 +21,17 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     try {
       user.value = await authService.fetchCurrentUser()
-      await cacheUser(user.value)
+      try {
+        await cacheUser(user.value ? {
+          id: user.value.id,
+          name: user.value.name,
+          email: user.value.email,
+          roles: [...user.value.roles],
+        } : null)
+      }
+      catch {
+        /* best-effort */
+      }
     }
     catch (err) {
       if (!isOnline() || isNetworkError(err)) {
@@ -41,8 +51,20 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     error.value = ''
     try {
-      user.value = await authService.login(username, password)
-      await cacheUser(user.value)
+      const next = await authService.login(username, password)
+      user.value = next
+      // Cache a plain copy; never block login if IndexedDB fails.
+      try {
+        await cacheUser({
+          id: next.id,
+          name: next.name,
+          email: next.email,
+          roles: [...next.roles],
+        })
+      }
+      catch {
+        /* offline cache is best-effort */
+      }
     }
     catch (err) {
       error.value = extractErrorMessage(err)

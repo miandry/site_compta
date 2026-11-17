@@ -52,9 +52,19 @@ export async function idbGet<T>(store: StoreName, key: string): Promise<T | unde
   return row?.value
 }
 
+/**
+ * Strip Vue/Pinia Proxies before IndexedDB put().
+ * Structured clone rejects reactive objects → "The object can not be cloned."
+ */
+function toPlain<T>(value: T): T {
+  if (value === undefined) return value
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 export async function idbSet<T>(store: StoreName, key: string, value: T): Promise<void> {
+  const plain = toPlain(value)
   await withStore(store, 'readwrite', (s) => {
-    s.put({ key, value })
+    s.put({ key, value: plain })
   })
 }
 

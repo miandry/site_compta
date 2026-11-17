@@ -5,7 +5,7 @@
  *
  * PRECACHE_URLS + PRECACHE_NAME are injected at build time by scripts/generate-pwa.mjs.
  */
-const PRECACHE_NAME = "comptability-precache-mwkrb3ec"
+const PRECACHE_NAME = "comptability-precache-mwkrrnxr"
 const APP_SHELL_URL = "/"
 const PRECACHE_URLS = ["/","/apple-icon-180.png","/favicon-196.png","/manifest-icon-192.maskable.png","/manifest-icon-512.maskable.png","/manifest.webmanifest","/sites/default/themes/comptability/css/style.css","/sites/default/themes/comptability/dist/app.js","/sites/default/themes/comptability/dist/assets/main.css"]
 const MATCH_OPTIONS = { ignoreVary: true }
