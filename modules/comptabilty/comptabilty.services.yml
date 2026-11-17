@@ -2,6 +2,12 @@ services:
   comptabilty.manager:
     class: Drupal\comptabilty\ComptabiltyManager
     arguments: ['@entity_type.manager', '@current_user']
+  logger.channel.comptabilty:
+    parent: logger.channel_base
+    arguments: ['comptabilty']
+  comptabilty.bird_sms:
+    class: Drupal\comptabilty\Service\BirdSms
+    arguments: ['@http_client', '@logger.channel.comptabilty']
   comptabilty.admin_create_notifier:
     class: Drupal\comptabilty\Service\AdminCreateNotifier
     arguments:
@@ -9,6 +15,7 @@ services:
       - '@plugin.manager.mail'
       - '@language_manager'
       - '@logger.factory'
+      - '@comptabilty.bird_sms'
   comptabilty.duplicate_operation_subscriber:
     class: Drupal\comptabilty\EventSubscriber\DuplicateOperationSubscriber
     arguments: ['@comptability_access.api_user', '@entity_type.manager']

@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { reactive } from 'vue'
 import type { BundleName, DeriveContext, LookupItem } from '@/schema'
+import { cacheLookups, getCachedLookups } from '@/offline/cache'
+import { isNetworkError, isOnline } from '@/offline/network'
 import { listEntities } from '@/services/entities'
 import { useTermsStore } from './terms'
 
@@ -19,10 +21,24 @@ export const useLookupsStore = defineStore('lookups', () => {
     if (!(bundle in items)) return []
     const key = bundle as LookupBundle
     if (loaded.has(key) && !force) return items[key]
-    const { items: records } = await listEntities(key, { limit: 'all', fields: LOOKUP_FIELDS[key] })
-    items[key] = records.map((r) => ({ id: r.id, label: r.title, values: { ...r.values, title: r.title } }))
-    loaded.add(key)
-    return items[key]
+    try {
+      const { items: records } = await listEntities(key, { limit: 'all', fields: LOOKUP_FIELDS[key] })
+      items[key] = records.map((r) => ({ id: r.id, label: r.title, values: { ...r.values, title: r.title } }))
+      loaded.add(key)
+      void cacheLookups(key, items[key])
+      return items[key]
+    }
+    catch (err) {
+      if (!isOnline() || isNetworkError(err)) {
+        const cached = await getCachedLookups(key)
+        if (cached?.length) {
+          items[key] = cached
+          loaded.add(key)
+          return items[key]
+        }
+      }
+      throw err
+    }
   }
 
   function invalidate(bundle: BundleName) {

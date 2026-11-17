@@ -20,22 +20,57 @@ class AdminCreateNotifier {
     protected MailManagerInterface $mailManager,
     protected LanguageManagerInterface $languageManager,
     protected LoggerChannelFactoryInterface $loggerFactory,
+    protected BirdSms $birdSms,
   ) {}
 
   public function notifyIfNeeded(NodeInterface $node): void {
     $config = $this->configFactory->get('comptabilty.settings');
-    if (!$config->get('notify_admin_on_create')) {
-      return;
-    }
     $bundles = $config->get('notify_bundles') ?: ['operation', 'operation_lot'];
     if (!in_array($node->bundle(), $bundles, TRUE)) {
       return;
     }
-
     $author = $node->getOwner();
     if (!$author instanceof UserInterface || ApiUser::isAdminAccount($author)) {
       return;
     }
+    if ($config->get('notify_admin_sms')) {
+      $this->sendSms($node, $author);
+    }
+    if ($config->get('notify_admin_on_create')) {
+      $this->sendEmail($node, $author);
+    }
+  }
+
+  /**
+   * Bird SMS to the admin phone; never blocks the save.
+   */
+  protected function sendSms(NodeInterface $node, UserInterface $author): void {
+    $config = $this->configFactory->get('comptabilty.settings');
+    $to = preg_replace('/[^\d+]/', '', (string) $config->get('admin_notify_phone'));
+    $from = trim((string) $config->get('bird_sms_from'));
+    if ($to === '' || $from === '' || !$this->birdSms->isConfigured()) {
+      $this->loggerFactory->get('comptabilty')->warning('SMS admin non envoyé : numéro, expéditeur ou clé Bird manquant.');
+      return;
+    }
+    $type = $node->bundle() === 'operation_lot' ? 'Saisie multiple' : 'Operation';
+    $summary = $this->summary($node);
+    $text = sprintf(
+      '%s par %s : %s%s',
+      $type,
+      $author->getAccountName(),
+      $node->label(),
+      isset($summary['Montant']) ? ' ' . ($summary['Mouvement'] ?? '') . ' ' . $summary['Montant'] : (isset($summary['Total lot']) ? ' ' . $summary['Total lot'] : ''),
+    );
+    try {
+      $this->birdSms->sendText($to, mb_substr($text, 0, 300), $from);
+    }
+    catch (\Throwable $e) {
+      $this->loggerFactory->get('comptabilty')->error('SMS admin Bird : @msg', ['@msg' => $e->getMessage()]);
+    }
+  }
+
+  protected function sendEmail(NodeInterface $node, UserInterface $author): void {
+    $config = $this->configFactory->get('comptabilty.settings');
 
     $to = trim((string) ($config->get('admin_notify_email') ?: ''));
     if ($to === '') {

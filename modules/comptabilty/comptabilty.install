@@ -191,3 +191,17 @@ function comptabilty_update_9007() {
   }
   return t('Notifications admin activées (email du site).');
 }
+
+/**
+ * Bird SMS settings for the admin notification (off until configured).
+ */
+function comptabilty_update_9008() {
+  $config = \Drupal::configFactory()->getEditable('comptabilty.settings');
+  foreach (['notify_admin_sms' => FALSE, 'admin_notify_phone' => '', 'bird_sms_from' => ''] as $key => $default) {
+    if ($config->get($key) === NULL) {
+      $config->set($key, $default);
+    }
+  }
+  $config->save();
+  return t("SMS Bird : renseignez le numéro et l'expéditeur dans /admin/config/comptabilty/notifications.");
+}

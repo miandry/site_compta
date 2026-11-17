@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { registerPwaServiceWorker } from './pwa/register'
 import './assets/css/main.css'
 
 // Also enforced here so it holds even when Drupal serves a cached <head>.
@@ -41,4 +42,9 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', mount)
 } else {
   mount()
+}
+
+// PWA (app.cache.mg pattern): register only for production Drupal builds.
+if (import.meta.env.PROD) {
+  void registerPwaServiceWorker()
 }

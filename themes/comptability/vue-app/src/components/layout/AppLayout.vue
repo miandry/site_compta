@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import OfflineBanner from '@/components/layout/OfflineBanner.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useOfflineStore } from '@/stores/offline'
 import { useUiStore } from '@/stores/ui'
 import { SITE_NAME } from '@/config'
 import { VOCABULARIES } from '@/schema'
@@ -11,6 +13,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const ui = useUiStore()
+useOfflineStore().start()
 
 const nav = computed(() => [
   { title: '', links: auth.isAdmin ? [{ to: '/', label: 'Tableau de bord', exact: true }] : [] },
@@ -110,6 +113,7 @@ async function logout() {
     </aside>
 
     <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+      <OfflineBanner />
       <header
         class="sticky top-0 z-20 mx-4 mt-4 flex shrink-0 items-center justify-between gap-3 rounded-neu-xl bg-neu-bg px-4 py-3 shadow-neu-out sm:mx-6 lg:mx-0 lg:mt-0"
       >

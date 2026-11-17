@@ -8,6 +8,15 @@ comptabilty.settings:
     admin_notify_email:
       type: email
       label: 'Admin notification email (empty = site mail)'
+    notify_admin_sms:
+      type: boolean
+      label: 'SMS (Bird) to admin when a non-admin creates content'
+    admin_notify_phone:
+      type: string
+      label: 'Admin phone (E.164)'
+    bird_sms_from:
+      type: string
+      label: 'Bird SMS sender ID'
     notify_bundles:
       type: sequence
       label: 'Bundles that trigger a notification'

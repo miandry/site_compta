@@ -13,8 +13,11 @@ import { useDisplay } from '@/composables/useDisplay'
 import type { BundleName, FieldDef, FormValues, LookupItem, Vocabulary } from '@/schema'
 import { BUNDLES, fieldDef } from '@/schema'
 import type { EntityRecord } from '@/services/entities'
+import { isOfflineId } from '@/offline/outbox'
+import { isOnline } from '@/offline/network'
 import { duplicateMessage, listEntities, removeEntity, saveEntity } from '@/services/entities'
 import { useLookupsStore } from '@/stores/lookups'
+import { useOfflineStore } from '@/stores/offline'
 import { useTermsStore } from '@/stores/terms'
 import { useUiStore } from '@/stores/ui'
 import { extractErrorMessage, formatMoney } from '@/utils/format'
@@ -26,6 +29,7 @@ const PAGE_SIZE = 10
 const route = useRoute()
 const router = useRouter()
 const ui = useUiStore()
+const offline = useOfflineStore()
 const terms = useTermsStore()
 const lookups = useLookupsStore()
 
@@ -249,9 +253,18 @@ async function onSubmit(values: FormValues) {
   submitting.value = true
   formAlert.value = ''
   try {
-    await saveEntity(props.bundle, values, lookups.deriveContext(), editing.value?.id)
-    ui.notify('success', editing.value ? `${def.value.label} mis(e) à jour.` : `${def.value.label} créé(e).`)
+    const id = await saveEntity(props.bundle, values, lookups.deriveContext(), editing.value?.id)
+    const queued = isOfflineId(id) || !isOnline()
+    ui.notify(
+      queued ? 'info' : 'success',
+      queued
+        ? `${def.value.label} enregistré(e) hors ligne — sync à la reconnexion.`
+        : editing.value
+          ? `${def.value.label} mis(e) à jour.`
+          : `${def.value.label} créé(e).`,
+    )
     modalOpen.value = false
+    await offline.refreshPending()
     await afterChange()
   } catch (err) {
     formAlert.value = duplicateMessage(err)
@@ -264,8 +277,14 @@ async function onSubmit(values: FormValues) {
 async function onDelete(record: EntityRecord) {
   if (!confirm(`Supprimer « ${record.title} » ?`)) return
   try {
-    await removeEntity(props.bundle, record.id)
-    ui.notify('success', 'Élément supprimé.')
+    await removeEntity(props.bundle, record.id, record.title)
+    ui.notify(
+      !isOnline() || isOfflineId(record.id) ? 'info' : 'success',
+      !isOnline() || isOfflineId(record.id)
+        ? 'Suppression mise en file (hors ligne).'
+        : 'Élément supprimé.',
+    )
+    await offline.refreshPending()
     await afterChange()
   } catch (err) {
     ui.notify('error', extractErrorMessage(err))

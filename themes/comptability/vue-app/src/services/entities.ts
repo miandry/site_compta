@@ -2,8 +2,21 @@ import { api, buildListParams } from './api'
 import type { Filter } from './api'
 import type { BundleDef, BundleName, DeriveContext, FormValues } from '@/schema'
 import { BUNDLES } from '@/schema'
+import { cacheEntityList, getCachedEntityList } from '@/offline/cache'
+import { isNetworkError, isOnline } from '@/offline/network'
+import {
+  enqueueRemove,
+  enqueueSave,
+  isOfflineId,
+  listOutbox,
+  pendingRecords,
+  removeOutboxJob,
+} from '@/offline/outbox'
 import { bool, num, refs, scalar, toDateInput, toDateTimeInput, toDrupalDateTime, toDrupalUtcDateTime } from '@/utils/format'
 import type { Row } from '@/utils/format'
+
+/** Bundles that can be queued offline (IndexedDB outbox). */
+const OFFLINE_WRITE_BUNDLES: BundleName[] = ['operation', 'operation_lot']
 
 const SAVE = '/api_solutions/save'
 const UPLOAD = '/api_solutions/action/uploader'
@@ -206,17 +219,87 @@ export async function listEntities(bundle: BundleName, query: ListQuery = {}) {
     filters,
     fields: query.fields ?? ['nid', 'title', 'created', ...def.fields.map((f) => f.key).filter((k) => k !== 'title')],
   })
-  const { data } = await api.get<ListResponse>(`${listUrl(bundle)}?${params}`)
-  const rows = Array.isArray(data.rows) ? data.rows : []
+  try {
+    const { data } = await api.get<ListResponse>(`${listUrl(bundle)}?${params}`)
+    const rows = Array.isArray(data.rows) ? data.rows : []
+    const result = {
+      items: rows.map((row) => normalize(def, row)),
+      total: Number(data.total ?? rows.length),
+    }
+    // Snapshot first page / unfiltered lists for offline browsing.
+    const bare = !query.search && !query.dateRange?.from && !query.dateRange?.to
+      && !Object.values(query.filters ?? {}).some(Boolean)
+      && (query.page ?? 1) === 1
+    if (bare && OFFLINE_WRITE_BUNDLES.includes(bundle)) {
+      void cacheEntityList(bundle, result.items, result.total)
+    }
+    if ((bundle === 'operation' || bundle === 'operation_lot') && (query.page ?? 1) === 1) {
+      return mergePendingIntoList(bundle, result.items, result.total)
+    }
+    return result
+  }
+  catch (err) {
+    if (!isOnline() || isNetworkError(err)) {
+      const cached = await getCachedEntityList(bundle)
+      if (cached || OFFLINE_WRITE_BUNDLES.includes(bundle)) {
+        return mergePendingIntoList(bundle, cached?.items ?? [], cached?.total ?? 0)
+      }
+    }
+    throw err
+  }
+}
+
+/** Pending outbox rows first; hide server rows superseded by a queued edit/delete. */
+async function mergePendingIntoList(bundle: BundleName, items: EntityRecord[], total: number) {
+  const jobs = await listOutbox()
+  const hide = new Set<string>()
+  for (const job of jobs) {
+    if (job.kind === 'save' && job.bundle === bundle && job.serverId) hide.add(job.serverId)
+    if (job.kind === 'remove' && job.bundle === bundle) hide.add(job.serverId)
+  }
+  const pending = await pendingRecords(bundle)
+  const rest = items.filter((row) => !hide.has(row.id))
+  const removed = items.length - rest.length
   return {
-    items: rows.map((row) => normalize(def, row)),
-    total: Number(data.total ?? rows.length),
+    items: [...pending, ...rest],
+    total: Math.max(0, total - removed) + pending.length,
   }
 }
 
 export async function getEntity(bundle: BundleName, id: string): Promise<EntityRecord | null> {
-  const { items } = await listEntities(bundle, { limit: 1, filters: { nid: id } })
-  return items[0] ?? null
+  if (isOfflineId(id)) {
+    const pending = await pendingRecords(bundle)
+    return pending.find((r) => r.id === id) ?? null
+  }
+  try {
+    const { items } = await listEntities(bundle, { limit: 1, filters: { nid: id } })
+    return items[0] ?? null
+  }
+  catch (err) {
+    if (!isOnline() || isNetworkError(err)) {
+      const cached = await getCachedEntityList(bundle)
+      return cached?.items.find((r) => r.id === id) ?? null
+    }
+    throw err
+  }
+}
+
+function buildLabels(def: BundleDef, values: FormValues, ctx: DeriveContext): Record<string, string> {
+  const labels: Record<string, string> = {}
+  for (const field of def.fields) {
+    const raw = values[field.key]
+    if (raw === '' || raw == null) continue
+    if (field.kind === 'term' && field.vocabulary) {
+      labels[field.key] = ctx.termLabel(field.vocabulary, String(raw))
+    }
+    else if (field.kind === 'node' && field.target) {
+      labels[field.key] = ctx.lookup(field.target, String(raw))?.label ?? ''
+    }
+    else if (field.kind === 'options' && field.options) {
+      labels[field.key] = field.options[String(raw)] ?? String(raw)
+    }
+  }
+  return labels
 }
 
 export async function saveEntity(
@@ -225,7 +308,38 @@ export async function saveEntity(
   ctx: DeriveContext,
   id?: string,
 ): Promise<string> {
-  const { data } = await api.post<SaveResponse>(SAVE, toPayload(BUNDLES[bundle], values, ctx, id))
+  const def = BUNDLES[bundle]
+  const title = def.titleFrom ? def.titleFrom(values, ctx) : String(values.title ?? '').trim()
+
+  // Edit of a still-queued local row: update the outbox entry (online or offline).
+  if (isOfflineId(id)) {
+    if (!OFFLINE_WRITE_BUNDLES.includes(bundle)) {
+      throw new Error('Modification hors ligne impossible pour ce type.')
+    }
+    return enqueueSave({
+      bundle,
+      values,
+      localId: id,
+      title,
+      labels: buildLabels(def, values, ctx),
+    })
+  }
+
+  if (!isOnline()) {
+    if (!OFFLINE_WRITE_BUNDLES.includes(bundle)) {
+      throw new Error('Hors ligne : seules les opérations et saisies multiples peuvent être enregistrées.')
+    }
+    // New image upload needs the network; existing fids are fine.
+    return enqueueSave({
+      bundle,
+      values,
+      serverId: id,
+      title,
+      labels: buildLabels(def, values, ctx),
+    })
+  }
+
+  const { data } = await api.post<SaveResponse>(SAVE, toPayload(def, values, ctx, id))
   if (data.status !== true || data.item == null) {
     throw new Error(data.message || "Échec de l'enregistrement")
   }
@@ -239,7 +353,18 @@ export function duplicateMessage(error: unknown): string {
 }
 
 /** Suppression douce : dépublication (status = 0), comme le reste du thème. */
-export async function removeEntity(bundle: BundleName, id: string): Promise<void> {
+export async function removeEntity(bundle: BundleName, id: string, title = ''): Promise<void> {
+  if (isOfflineId(id)) {
+    await removeOutboxJob(id)
+    return
+  }
+  if (!isOnline()) {
+    if (!OFFLINE_WRITE_BUNDLES.includes(bundle)) {
+      throw new Error('Hors ligne : suppression impossible pour ce type.')
+    }
+    await enqueueRemove({ bundle, serverId: id, title: title || id })
+    return
+  }
   const { data } = await api.post<SaveResponse>(SAVE, {
     entity_type: 'node',
     bundle,
@@ -250,6 +375,9 @@ export async function removeEntity(bundle: BundleName, id: string): Promise<void
 }
 
 export async function uploadFile(file: File): Promise<FileRef> {
+  if (!isOnline()) {
+    throw new Error('Hors ligne : impossible d’envoyer un justificatif. Réessayez une fois reconnecté.')
+  }
   const body = new FormData()
   body.append('file', file, file.name)
   const { data } = await api.post<{ status: boolean; fid?: number; url?: string; message?: string }>(

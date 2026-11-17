@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { cacheUser, getCachedUser } from '@/offline/cache'
+import { isNetworkError, isOnline } from '@/offline/network'
 import * as authService from '@/services/auth.service'
 import type { User } from '@/services/auth.service'
 import { extractErrorMessage } from '@/utils/format'
@@ -19,9 +21,17 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     try {
       user.value = await authService.fetchCurrentUser()
-    } catch {
-      user.value = null
-    } finally {
+      await cacheUser(user.value)
+    }
+    catch (err) {
+      if (!isOnline() || isNetworkError(err)) {
+        user.value = await getCachedUser()
+      }
+      else {
+        user.value = null
+      }
+    }
+    finally {
       loading.value = false
       initialized.value = true
     }
@@ -32,10 +42,13 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = ''
     try {
       user.value = await authService.login(username, password)
-    } catch (err) {
+      await cacheUser(user.value)
+    }
+    catch (err) {
       error.value = extractErrorMessage(err)
       throw err
-    } finally {
+    }
+    finally {
       loading.value = false
     }
   }
@@ -43,6 +56,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout() {
     await authService.logout()
     user.value = null
+    await cacheUser(null)
   }
 
   return { user, loading, error, initialized, isAuthenticated, isAdmin, init, login, logout }

@@ -36,6 +36,7 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     const url = error.config?.url ?? ''
+    // Ne déconnecter que sur un vrai 401 HTTP — pas sur une erreur réseau hors ligne.
     if (error.response?.status === 401 && !AUTH_ENDPOINTS.some((path) => url.includes(path))) {
       clearAuthStorage()
       if (!window.location.hash.includes('/connexion')) {

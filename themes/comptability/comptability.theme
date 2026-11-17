@@ -26,7 +26,7 @@ function comptability_preprocess_page(&$variables) {
 /**
  * Implements hook_page_attachments_alter().
  *
- * App-like mobile screen: no pinch / double-tap zoom.
+ * App-like mobile screen + PWA head tags (same pattern as https://app.cache.mg/).
  */
 function comptability_page_attachments_alter(array &$attachments) {
   foreach ($attachments['#attached']['html_head'] ?? [] as $i => $item) {
@@ -34,5 +34,86 @@ function comptability_page_attachments_alter(array &$attachments) {
       $attachments['#attached']['html_head'][$i][0]['#attributes']['content'] =
         'width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
     }
+  }
+
+  $head = [
+    'comptability_description' => [
+      '#tag' => 'meta',
+      '#attributes' => [
+        'name' => 'description',
+        'content' => 'Suivi des opérations, caisses, personnes et saisies multiples.',
+      ],
+    ],
+    'comptability_theme_color_light' => [
+      '#tag' => 'meta',
+      '#attributes' => [
+        'name' => 'theme-color',
+        'content' => '#e0e5ec',
+        'media' => '(prefers-color-scheme: light)',
+      ],
+    ],
+    'comptability_theme_color_dark' => [
+      '#tag' => 'meta',
+      '#attributes' => [
+        'name' => 'theme-color',
+        'content' => '#1f2937',
+        'media' => '(prefers-color-scheme: dark)',
+      ],
+    ],
+    'comptability_apple_mobile_web_app_capable' => [
+      '#tag' => 'meta',
+      '#attributes' => [
+        'name' => 'apple-mobile-web-app-capable',
+        'content' => 'yes',
+      ],
+    ],
+    'comptability_mobile_web_app_capable' => [
+      '#tag' => 'meta',
+      '#attributes' => [
+        'name' => 'mobile-web-app-capable',
+        'content' => 'yes',
+      ],
+    ],
+    'comptability_apple_status_bar' => [
+      '#tag' => 'meta',
+      '#attributes' => [
+        'name' => 'apple-mobile-web-app-status-bar-style',
+        'content' => 'default',
+      ],
+    ],
+    'comptability_apple_title' => [
+      '#tag' => 'meta',
+      '#attributes' => [
+        'name' => 'apple-mobile-web-app-title',
+        'content' => 'Compta',
+      ],
+    ],
+    'comptability_manifest' => [
+      '#tag' => 'link',
+      '#attributes' => [
+        'rel' => 'manifest',
+        'href' => '/manifest.webmanifest',
+      ],
+    ],
+    'comptability_favicon_196' => [
+      '#tag' => 'link',
+      '#attributes' => [
+        'rel' => 'icon',
+        'type' => 'image/png',
+        'sizes' => '196x196',
+        'href' => '/favicon-196.png',
+      ],
+    ],
+    'comptability_apple_touch_icon' => [
+      '#tag' => 'link',
+      '#attributes' => [
+        'rel' => 'apple-touch-icon',
+        'href' => '/apple-icon-180.png',
+      ],
+    ],
+  ];
+
+  foreach ($head as $key => $element) {
+    $attachments['#attached']['html_head'][] = [$element, $key];
   }
 }

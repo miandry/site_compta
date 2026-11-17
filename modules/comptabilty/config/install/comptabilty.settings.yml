@@ -1,5 +1,8 @@
 notify_admin_on_create: true
 admin_notify_email: ''
+notify_admin_sms: false
+admin_notify_phone: ''
+bird_sms_from: ''
 notify_bundles:
   - operation
   - operation_lot

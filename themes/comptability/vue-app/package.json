@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/generate-pwa.mjs",
+    "pwa": "node scripts/generate-pwa.mjs",
     "type-check": "vue-tsc --noEmit -p tsconfig.app.json",
     "preview": "vite preview"
   },

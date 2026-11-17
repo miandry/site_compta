@@ -10,7 +10,10 @@ import { useDisplay } from '@/composables/useDisplay'
 import type { BundleName, FormValues, Vocabulary } from '@/schema'
 import { BUNDLES, fieldDef } from '@/schema'
 import type { EntityRecord } from '@/services/entities'
+import { isOfflineId } from '@/offline/outbox'
+import { isOnline } from '@/offline/network'
 import { duplicateMessage, getEntity, listEntities, removeEntity, saveEntity } from '@/services/entities'
+import { useOfflineStore } from '@/stores/offline'
 import type { RevisionEntry } from '@/services/history'
 import { fetchHistory } from '@/services/history'
 import { useLookupsStore } from '@/stores/lookups'
@@ -22,6 +25,7 @@ const props = defineProps<{ bundle: BundleName; id: string; listPath: string }>(
 
 const router = useRouter()
 const ui = useUiStore()
+const offline = useOfflineStore()
 const terms = useTermsStore()
 const lookups = useLookupsStore()
 const { text, sign, signedMoney } = useDisplay()
@@ -153,10 +157,17 @@ async function onSubmit(values: FormValues) {
   submitting.value = true
   formAlert.value = ''
   try {
-    await saveEntity(props.bundle, values, lookups.deriveContext(), record.value.id)
-    ui.notify('success', `${def.value.label} mis(e) à jour.`)
+    const id = await saveEntity(props.bundle, values, lookups.deriveContext(), record.value.id)
+    const queued = isOfflineId(id) || !isOnline()
+    ui.notify(
+      queued ? 'info' : 'success',
+      queued
+        ? `${def.value.label} mis(e) à jour hors ligne — sync à la reconnexion.`
+        : `${def.value.label} mis(e) à jour.`,
+    )
     editOpen.value = false
     lookups.invalidate(props.bundle)
+    await offline.refreshPending()
     await load()
   } catch (err) {
     formAlert.value = duplicateMessage(err)
@@ -169,9 +180,15 @@ async function onSubmit(values: FormValues) {
 async function onDelete() {
   if (!record.value || !confirm(`Supprimer « ${record.value.title} » ?`)) return
   try {
-    await removeEntity(props.bundle, record.value.id)
+    await removeEntity(props.bundle, record.value.id, record.value.title)
     lookups.invalidate(props.bundle)
-    ui.notify('success', 'Élément supprimé.')
+    await offline.refreshPending()
+    ui.notify(
+      !isOnline() || isOfflineId(record.value.id) ? 'info' : 'success',
+      !isOnline() || isOfflineId(record.value.id)
+        ? 'Suppression mise en file (hors ligne).'
+        : 'Élément supprimé.',
+    )
     router.push(props.listPath)
   } catch (err) {
     ui.notify('error', extractErrorMessage(err))

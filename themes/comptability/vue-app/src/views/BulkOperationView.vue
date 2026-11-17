@@ -5,7 +5,10 @@ import FieldInput from '@/components/entity/FieldInput.vue'
 import BaseSpinner from '@/components/ui/BaseSpinner.vue'
 import type { FormValue, FormValues } from '@/schema'
 import { BUNDLES, fieldDef } from '@/schema'
+import { enqueueBulk } from '@/offline/outbox'
+import { isOnline } from '@/offline/network'
 import { duplicateMessage, getEntity, removeEntity, saveEntity } from '@/services/entities'
+import { useOfflineStore } from '@/stores/offline'
 import { useLookupsStore } from '@/stores/lookups'
 import { useTermsStore } from '@/stores/terms'
 import { useUiStore } from '@/stores/ui'
@@ -49,6 +52,7 @@ const sharedFields = SHARED.map((key) => fieldDef(def, key))
 
 const terms = useTermsStore()
 const lookups = useLookupsStore()
+const offline = useOfflineStore()
 const ui = useUiStore()
 
 const shared = reactive<FormValues>({
@@ -339,6 +343,40 @@ async function saveAll() {
   if (formError.value || saving.value) return
   saving.value = true
   clearResults()
+
+  // Hors ligne : une seule entrée outbox (suppr. + lignes + lot) rejouée à la reconnexion.
+  if (!isOnline()) {
+    try {
+      const personLabel = lookups.find('person', String(shared.field_person))?.label || 'Saisie'
+      await enqueueBulk({
+        shared: { ...shared },
+        lines: validLines.value.map((l) => ({
+          amount: l.amount,
+          label: l.label,
+          mouvement: l.mouvement,
+        })),
+        text: text.value.trim(),
+        lotServerId: lotId.value || undefined,
+        removeIds: toRemove.value.map((o) => o.id),
+        title: `Saisie multiple — ${personLabel}`,
+      })
+      await offline.refreshPending()
+      ui.notify('info', 'Saisie multiple mise en file hors ligne — sync à la reconnexion.')
+      for (const line of validLines.value) {
+        if (planOf(line) === 'same') continue
+        results[line.index] = { status: 'created', message: 'En file hors ligne' }
+      }
+    }
+    catch (err) {
+      formError.value = extractErrorMessage(err)
+      ui.notify('error', formError.value)
+    }
+    finally {
+      saving.value = false
+    }
+    return
+  }
+
   const count = { created: 0, updated: 0, removed: 0, duplicates: 0, errors: 0 }
   const ctx = lookups.deriveContext()
   const plan = assignment.value

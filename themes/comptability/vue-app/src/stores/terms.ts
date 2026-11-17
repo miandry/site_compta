@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
 import type { Vocabulary } from '@/schema'
+import { cacheTerms, getCachedTerms } from '@/offline/cache'
+import { isNetworkError, isOnline } from '@/offline/network'
 import * as termsService from '@/services/terms'
 import type { Term } from '@/services/terms'
 
@@ -22,8 +24,21 @@ export const useTermsStore = defineStore('terms', () => {
         (a, b) => a.weight - b.weight,
       )
       loaded.add(vocabulary)
+      void cacheTerms(vocabulary, byVocabulary[vocabulary])
       return byVocabulary[vocabulary]
-    } finally {
+    }
+    catch (err) {
+      if (!isOnline() || isNetworkError(err)) {
+        const cached = await getCachedTerms(vocabulary)
+        if (cached?.length) {
+          byVocabulary[vocabulary] = cached
+          loaded.add(vocabulary)
+          return byVocabulary[vocabulary]
+        }
+      }
+      throw err
+    }
+    finally {
       loading.value = false
     }
   }
